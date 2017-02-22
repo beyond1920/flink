@@ -27,6 +27,7 @@ import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.core.fs.Path
 import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
+import org.apache.flink.table.annotation.ExternalCatalogCompatible
 import org.apache.flink.table.api.TableException
 
 import scala.collection.mutable
@@ -45,6 +46,8 @@ import scala.collection.mutable
   * @param ignoreComments An optional prefix to indicate comments, null by default.
   * @param lenient Flag to skip records with parse error instead to fail, false by default.
   */
+
+@ExternalCatalogCompatible(tableType = "csv", converter = classOf[CsvTableSourceConverter])
 class CsvTableSource(
     private val path: String,
     private val fieldNames: Array[String],

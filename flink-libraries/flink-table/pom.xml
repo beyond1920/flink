@@ -92,7 +92,12 @@ under the License.
 			</exclusions>
 		</dependency>
 
-
+		<dependency>
+			<groupId>org.reflections</groupId>
+			<artifactId>reflections</artifactId>
+			<version>0.9.10</version>
+			<scope>compile</scope>
+		</dependency>
 		<!-- test dependencies -->
 
 		<dependency>
