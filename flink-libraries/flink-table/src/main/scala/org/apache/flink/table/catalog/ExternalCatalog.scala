@@ -18,15 +18,76 @@
 
 package org.apache.flink.table.catalog
 
+import org.apache.flink.table.catalog.ExternalCatalogTypes.PartitionSpec
+
 /**
   * This class is responsible for interact with external catalog.
   * Its main responsibilities including:
   * <ul>
-  * <li> create/drop/alter database or tables for DDL operations
+  * <li> create/drop/alter database, tables, partitions for DDL operations
   * <li> provide tables for calcite catalog, it looks up databases or tables in the external catalog
   * </ul>
   */
 trait ExternalCatalog {
+
+  /**
+    * Adds partitions into an external Catalog table
+    *
+    * @param dbName         database name
+    * @param tableName      table name
+    * @param part           partition description of partition which to create
+    * @param ignoreIfExists whether to ignore operation if table already exists
+    */
+  def createPartition(
+      dbName: String,
+      tableName: String,
+      part: ExternalCatalogTablePartition,
+      ignoreIfExists: Boolean): Unit
+
+  /**
+    * Deletes partition of an external Catalog table
+    *
+    * @param dbName            database name
+    * @param tableName         table name
+    * @param partSpec          partition specification
+    * @param ignoreIfNotExists whether to ignore operation if table not exist yet
+    */
+  def dropPartition(
+      dbName: String,
+      tableName: String,
+      partSpec: PartitionSpec,
+      ignoreIfNotExists: Boolean): Unit
+
+  /**
+    * Alters an existed external Catalog table partition
+    *
+    * @param dbName    database name
+    * @param tableName table name
+    * @param part      description of partition which to alter
+    */
+  def alterPartition(dbName: String, tableName: String, part: ExternalCatalogTablePartition): Unit
+
+  /**
+    * Gets the partition from external Catalog
+    *
+    * @param dbName    database name
+    * @param tableName table name
+    * @param partSpec  partition specification
+    * @return
+    */
+  def getPartition(
+      dbName: String,
+      tableName: String,
+      partSpec: PartitionSpec): ExternalCatalogTablePartition
+
+  /**
+    * Gets the partition specification list of a table from external catalog
+    *
+    * @param dbName    database name
+    * @param tableName table name
+    * @return
+    */
+  def listPartitionSpec(dbName: String, tableName: String): Seq[PartitionSpec]
 
   /**
     * Adds table into external Catalog

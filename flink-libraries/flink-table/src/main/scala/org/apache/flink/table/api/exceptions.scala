@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.api
 
+import org.apache.flink.table.catalog.ExternalCatalogTypes.PartitionSpec
+
 /**
   * Exception for all errors occurring during expression parsing.
   */
@@ -71,6 +73,48 @@ object ValidationException {
   * Exception for unwanted method calling on unresolved expression.
   */
 case class UnresolvedException(msg: String) extends RuntimeException(msg)
+
+/**
+  * Exception for operation on a nonexistent partition
+  *
+  * @param db            database name
+  * @param table         table name
+  * @param partitionSpec partition spec
+  * @param cause
+  */
+case class PartitionNotExistException(
+    db: String,
+    table: String,
+    partitionSpec: PartitionSpec,
+    cause: Throwable)
+    extends RuntimeException(
+      s"partition $partitionSpec does not exist in table $db.$table!", cause) {
+
+  def this(db: String, table: String, partitionSpec: PartitionSpec) =
+    this(db, table, partitionSpec, null)
+
+}
+
+/**
+  * Exception for adding an already existed partition
+  *
+  * @param db            database name
+  * @param table         table name
+  * @param partitionSpec partition spec
+  * @param cause
+  */
+case class PartitionAlreadyExistException(
+    db: String,
+    table: String,
+    partitionSpec: PartitionSpec,
+    cause: Throwable)
+    extends RuntimeException(
+      s"partition [${partitionSpec.mkString(", ")}] already exists in table $db.$table!", cause) {
+
+  def this(db: String, table: String, partitionSpec: PartitionSpec) =
+    this(db, table, partitionSpec, null)
+
+}
 
 /**
   * Exception for operation on a nonexistent table

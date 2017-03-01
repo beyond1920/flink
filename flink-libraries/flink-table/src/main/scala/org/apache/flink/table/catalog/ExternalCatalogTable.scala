@@ -40,6 +40,7 @@ case class ExternalCatalogTable(
     properties: Map[String, String] = Map.empty,
     stats: Option[TableStats] = None,
     comment: Option[String] = None,
+    partitionColumnNames: Seq[String] = Seq.empty,
     createTime: Long = System.currentTimeMillis,
     lastAccessTime: Long = -1)
 

@@ -18,9 +18,10 @@
 
 package org.apache.flink.table.catalog
 
-import org.apache.flink.table.api.{DatabaseAlreadyExistException, DatabaseNotExistException, TableAlreadyExistException, TableNotExistException}
+import org.apache.flink.table.api._
+import org.apache.flink.table.catalog.ExternalCatalogTypes.PartitionSpec
 
-import scala.collection.mutable.HashMap
+import _root_.scala.collection.mutable
 
 /**
   * This class is an in-memory implementation of [[ExternalCatalog]].
@@ -29,7 +30,7 @@ import scala.collection.mutable.HashMap
   */
 class InMemoryExternalCatalog extends ExternalCatalog {
 
-  private val databases = new HashMap[String, Database]
+  private val databases = new mutable.HashMap[String, DatabaseDesc]
 
   override def createTable(
       table: ExternalCatalogTable,
@@ -37,10 +38,12 @@ class InMemoryExternalCatalog extends ExternalCatalog {
     val dbName = table.identifier.database
     val tables = getTables(dbName)
     val tableName = table.identifier.table
-    if (tables.contains(tableName) && !ignoreIfExists) {
-      throw new TableAlreadyExistException(dbName, tableName)
+    if (tables.contains(tableName)) {
+      if (!ignoreIfExists) {
+        throw new TableAlreadyExistException(dbName, tableName)
+      }
     } else {
-      tables.put(tableName, table)
+      tables.put(tableName, new TableDesc(table))
     }
   }
 
@@ -55,14 +58,8 @@ class InMemoryExternalCatalog extends ExternalCatalog {
   }
 
   override def alterTable(table: ExternalCatalogTable): Unit = synchronized {
-    val dbName = table.identifier.database
-    val tables = getTables(dbName)
-    val tableName = table.identifier.table
-    if (tables.contains(tableName)) {
-      tables.put(tableName, table)
-    } else {
-      throw new TableNotExistException(dbName, tableName)
-    }
+    val tableDesc = getTableDesc(table.identifier.database, table.identifier.table)
+    tableDesc.table = table
   }
 
   override def listTables(dbName: String): Seq[String] = synchronized {
@@ -71,21 +68,20 @@ class InMemoryExternalCatalog extends ExternalCatalog {
   }
 
   override def getTable(dbName: String, tableName: String): ExternalCatalogTable = synchronized {
-    val tables = getTables(dbName)
-    tables.get(tableName) match {
-      case Some(table) => table
-      case None => throw new TableNotExistException(dbName, tableName)
-    }
+    val tableDesc = getTableDesc(dbName, tableName)
+    tableDesc.table
   }
 
   override def createDatabase(
       db: ExternalCatalogDatabase,
       ignoreIfExists: Boolean): Unit = synchronized {
     val dbName = db.dbName
-    if (databases.contains(dbName) && !ignoreIfExists) {
-      throw new DatabaseAlreadyExistException(dbName)
+    if (databases.contains(dbName)) {
+      if (!ignoreIfExists) {
+        throw new DatabaseAlreadyExistException(dbName)
+      }
     } else {
-      databases.put(dbName, new Database(db))
+      databases.put(dbName, new DatabaseDesc(db))
     }
   }
 
@@ -116,14 +112,109 @@ class InMemoryExternalCatalog extends ExternalCatalog {
     }
   }
 
-  private def getTables(db: String): HashMap[String, ExternalCatalogTable] =
+  override def createPartition(
+      dbName: String,
+      tableName: String,
+      part: ExternalCatalogTablePartition,
+      ignoreIfExists: Boolean): Unit = synchronized {
+    val newPartSpec = part.partitionSpec
+    val partitionedTable = getPartitionedTable(dbName, tableName)
+    checkPartitionSpec(newPartSpec, partitionedTable.table)
+    if (partitionedTable.partitions.contains(newPartSpec)) {
+      if (!ignoreIfExists) {
+        throw new PartitionAlreadyExistException(dbName, tableName, newPartSpec)
+      }
+    } else {
+      partitionedTable.partitions.put(newPartSpec, part)
+    }
+  }
+
+  override def getPartition(
+      dbName: String,
+      tableName: String,
+      partSpec: PartitionSpec): ExternalCatalogTablePartition = synchronized {
+    val partitionedTable = getPartitionedTable(dbName, tableName)
+    checkPartitionSpec(partSpec, partitionedTable.table)
+    partitionedTable.partitions.get(partSpec) match {
+      case Some(part) => part
+      case None =>
+        throw new PartitionNotExistException(dbName, tableName, partSpec)
+    }
+  }
+
+  override def dropPartition(
+      dbName: String,
+      tableName: String,
+      partSpec: PartitionSpec,
+      ignoreIfNotExists: Boolean): Unit = synchronized {
+    val partitionedTable = getPartitionedTable(dbName, tableName)
+    checkPartitionSpec(partSpec, partitionedTable.table)
+    if (partitionedTable.partitions.remove(partSpec).isEmpty && !ignoreIfNotExists) {
+      throw new PartitionNotExistException(dbName, tableName, partSpec)
+    }
+  }
+
+  override def listPartitionSpec(
+      dbName: String,
+      tableName: String): Seq[PartitionSpec] = synchronized {
+    getPartitionedTable(dbName, tableName).partitions.keys.toSeq
+  }
+
+  override def alterPartition(
+      dbName: String,
+      tableName: String,
+      part: ExternalCatalogTablePartition): Unit = synchronized {
+    val updatedPartSpec = part.partitionSpec
+    val partitionedTable = getPartitionedTable(dbName, tableName)
+    checkPartitionSpec(updatedPartSpec, partitionedTable.table)
+    if (partitionedTable.partitions.contains(updatedPartSpec)) {
+      partitionedTable.partitions.put(updatedPartSpec, part)
+    } else {
+      throw new PartitionNotExistException(dbName, tableName, updatedPartSpec)
+    }
+  }
+
+  private def getTables(db: String): mutable.HashMap[String, TableDesc] =
     databases.get(db) match {
       case Some(database) => database.tables
       case None => throw new DatabaseNotExistException(db)
     }
 
-  private class Database(var db: ExternalCatalogDatabase) {
-    val tables = new HashMap[String, ExternalCatalogTable]
+  private def getTableDesc(
+      dbName: String,
+      tableName: String): TableDesc = {
+    val tables = getTables(dbName)
+    tables.get(tableName) match {
+      case Some(tableDesc) => tableDesc
+      case None =>
+        throw new TableNotExistException(dbName, tableName)
+    }
+  }
+
+  private def getPartitionedTable(
+      dbName: String,
+      tableName: String): TableDesc = {
+    val tableDesc = getTableDesc(dbName, tableName)
+    val table = tableDesc.table
+    if (table.partitionColumnNames.isEmpty) {
+      throw new UnsupportedOperationException(
+        s"cannot do any operation about partition on the non-partitioned table ${table.identifier}")
+    } else {
+      tableDesc
+    }
+  }
+
+  private def checkPartitionSpec(partSpec: PartitionSpec, table: ExternalCatalogTable): Unit =
+    if (partSpec.keySet != table.partitionColumnNames.toSet) {
+      throw new IllegalArgumentException("Input partition specification is invalid!")
+    }
+
+  private class DatabaseDesc(var db: ExternalCatalogDatabase) {
+    val tables = new mutable.HashMap[String, TableDesc]
+  }
+
+  private class TableDesc(var table: ExternalCatalogTable) {
+    val partitions = new mutable.HashMap[PartitionSpec, ExternalCatalogTablePartition]
   }
 
 }
