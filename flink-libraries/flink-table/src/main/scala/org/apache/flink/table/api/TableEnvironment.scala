@@ -50,6 +50,7 @@ import org.apache.flink.table.codegen.{CodeGenerator, ExpressionReducer}
 import org.apache.flink.table.expressions.{Alias, Expression, UnresolvedFieldReference}
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{checkForInstantiation, checkNotSingleton, createScalarSqlFunction, createTableSqlFunctions}
 import org.apache.flink.table.functions.{ScalarFunction, TableFunction}
+import org.apache.flink.table.plan.catalog.{FlinkCatalogSchema, InMemoryFlinkCatalog}
 import org.apache.flink.table.plan.cost.DataSetCostFactory
 import org.apache.flink.table.plan.logical.{CatalogNode, LogicalRelNode}
 import org.apache.flink.table.plan.schema.RelTable
@@ -68,18 +69,24 @@ import _root_.scala.collection.JavaConverters._
   */
 abstract class TableEnvironment(val config: TableConfig) {
 
-  // the catalog to hold all registered and translated tables
   // we disable caching here to prevent side effects
-  private val internalSchema: CalciteSchema = CalciteSchema.createRootSchema(true, false)
-  private val tables: SchemaPlus = internalSchema.plus()
+  private val rootSchema: CalciteSchema = CalciteSchema.createRootSchema(true, false)
+  private val rootSchemaPlus: SchemaPlus = rootSchema.plus()
 
+  // internalFlinkCatalogSchema is to hold all registered and translated tables
+  private val internalFlinkCatalogSchema: FlinkCatalogSchema =
+    FlinkCatalogSchema.create(
+      rootSchemaPlus,
+      config.getInternalCatalogName,
+      classOf[InMemoryFlinkCatalog],
+      config.getInternalCatalogConfig)
   // Table API/SQL function catalog
   private val functionCatalog: FunctionCatalog = FunctionCatalog.withBuiltIns
 
   // the configuration to create a Calcite planner
   private lazy val frameworkConfig: FrameworkConfig = Frameworks
     .newConfigBuilder
-    .defaultSchema(tables)
+    .defaultSchema(internalFlinkCatalogSchema.getLocalRootSchemaPlus)
     .parserConfig(getSqlParserConfig)
     .costFactory(new DataSetCostFactory)
     .typeSystem(new FlinkTypeSystem)
@@ -323,7 +330,7 @@ abstract class TableEnvironment(val config: TableConfig) {
     */
   def unregisterTable(name: String): Boolean = {
     if (isRegistered(name)) {
-      internalSchema.tableMap.remove(name)
+      internalFlinkCatalogSchema.dropTable(name)
       true
     } else {
       false
@@ -341,7 +348,7 @@ abstract class TableEnvironment(val config: TableConfig) {
   protected def replaceRegisteredTable(name: String, table: AbstractTable): Unit = {
 
     if (isRegistered(name)) {
-      tables.add(name, table)
+      internalFlinkCatalogSchema.add(name, table)
     } else {
       throw new TableException(s"Table \'$name\' is not registered.")
     }
@@ -416,7 +423,7 @@ abstract class TableEnvironment(val config: TableConfig) {
       throw new TableException(s"Table \'$name\' already exists. " +
         s"Please, choose a different name.")
     } else {
-      tables.add(name, table)
+      internalFlinkCatalogSchema.add(name, table)
     }
   }
 
@@ -434,11 +441,11 @@ abstract class TableEnvironment(val config: TableConfig) {
     * @return true, if a table is registered under the name, false otherwise.
     */
   protected def isRegistered(name: String): Boolean = {
-    tables.getTableNames.contains(name)
+    internalFlinkCatalogSchema.getTableNames.contains(name)
   }
 
   protected def getRowType(name: String): RelDataType = {
-    tables.getTable(name).getRowType(typeFactory)
+    internalFlinkCatalogSchema.getTable(name).getRowType(typeFactory)
   }
 
   /** Returns a unique temporary attribute name. */

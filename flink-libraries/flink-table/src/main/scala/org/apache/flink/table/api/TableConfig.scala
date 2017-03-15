@@ -20,7 +20,8 @@ package org.apache.flink.table.api
 import _root_.java.util.TimeZone
 
 import org.apache.flink.table.calcite.CalciteConfig
-
+import org.apache.flink.configuration.Configuration
+import org.apache.flink.table.plan.catalog.{FlinkCatalog, InMemoryFlinkCatalog}
 /**
  * A config to define the runtime behavior of the Table API.
  */
@@ -40,6 +41,16 @@ class TableConfig {
     * Defines the configuration of Calcite for Table API and SQL queries.
     */
   private var calciteConfig = CalciteConfig.DEFAULT
+
+  /**
+    * Defines the name of flink internal catalog name
+    */
+  private var internalCatalogName = "__flink_internal_catalog__"
+
+  /**
+    * Defines the config of flink internal catalog name
+    */
+  private var internalCatalogConfig: Configuration = new Configuration()
 
   /**
    * Sets the timezone for date/time/timestamp conversions.
@@ -77,6 +88,38 @@ class TableConfig {
     */
   def setCalciteConfig(calciteConfig: CalciteConfig): Unit = {
     this.calciteConfig = calciteConfig
+  }
+
+  /**
+    * Returns the name of flink internal catalog name
+    *
+    * @return
+    */
+  def getInternalCatalogName = internalCatalogName
+
+  /**
+    * Sets the name of flink internal catalog name
+    *
+    * @param name
+    */
+  def setInternalCatalogName(name: String): Unit = {
+    this.internalCatalogName = name
+  }
+
+  /**
+    * Returns the config of flink internal catalog name
+    *
+    * @return
+    */
+  def getInternalCatalogConfig = internalCatalogConfig
+
+  /**
+    * Sets the config of flink internal catalog name
+    *
+    * @param config
+    */
+  def setInternalCatalogConfig(config: Configuration): Unit = {
+    this.internalCatalogConfig = config
   }
 }
 

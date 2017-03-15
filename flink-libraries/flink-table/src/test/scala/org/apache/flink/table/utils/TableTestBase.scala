@@ -106,11 +106,11 @@ object TableTestUtil {
   }
 
   def batchTableNode(idx: Int): String = {
-    s"DataSetScan(table=[[_DataSetTable_$idx]])"
+    s"DataSetScan(table=[[__flink_internal_catalog__, _DataSetTable_$idx]])"
   }
 
   def streamTableNode(idx: Int): String = {
-    s"DataStreamScan(table=[[_DataStreamTable_$idx]])"
+    s"DataStreamScan(table=[[__flink_internal_catalog__, _DataStreamTable_$idx]])"
   }
 
 }

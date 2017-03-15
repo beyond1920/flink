@@ -200,10 +200,12 @@ class TableSourceTest extends TableTestBase {
   }
 
   def sourceBatchTableNode(sourceName: String, fields: Array[String]): String = {
-    s"BatchTableSourceScan(table=[[$sourceName]], fields=[${fields.mkString(", ")}])"
+    s"BatchTableSourceScan(table=[[__flink_internal_catalog__, $sourceName]], " +
+        s"fields=[${fields.mkString(", ")}])"
   }
 
   def sourceStreamTableNode(sourceName: String, fields: Array[String] ): String = {
-    s"StreamTableSourceScan(table=[[$sourceName]], fields=[${fields.mkString(", ")}])"
+    s"StreamTableSourceScan(table=[[__flink_internal_catalog__, $sourceName]], " +
+        s"fields=[${fields.mkString(", ")}])"
   }
 }

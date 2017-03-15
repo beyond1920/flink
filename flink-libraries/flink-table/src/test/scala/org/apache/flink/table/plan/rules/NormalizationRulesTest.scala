@@ -50,7 +50,7 @@ class NormalizationRulesTest extends TableTestBase {
       unaryNode("LogicalAggregate",
         unaryNode("LogicalAggregate",
           unaryNode("LogicalProject",
-            values("LogicalTableScan", term("table", "[MyTable]")),
+            values("LogicalTableScan", term("table", "[__flink_internal_catalog__, MyTable]")),
             term("b", "$1"), term("a", "$0")),
           term("group", "{0, 1}")),
         term("group", "{0}"), term("EXPR$0", "COUNT($1)")
@@ -84,7 +84,7 @@ class NormalizationRulesTest extends TableTestBase {
       unaryNode("LogicalAggregate",
         unaryNode("LogicalAggregate",
           unaryNode("LogicalProject",
-            values("LogicalTableScan", term("table", "[MyTable]")),
+            values("LogicalTableScan", term("table", "[__flink_internal_catalog__, MyTable]")),
             term("b", "$1"), term("a", "$0")),
           term("group", "{0, 1}")),
         term("group", "{0}"), term("EXPR$0", "COUNT($1)")

@@ -18,33 +18,39 @@
 
 package org.apache.flink.table.api.java.batch;
 
+import org.apache.calcite.tools.RuleSets;
+import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.DataSet;
+import org.apache.flink.api.java.ExecutionEnvironment;
+import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple4;
+import org.apache.flink.api.java.tuple.Tuple5;
+import org.apache.flink.api.java.typeutils.TupleTypeInfo;
+import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.api.java.BatchTableEnvironment;
+import org.apache.flink.table.api.scala.batch.utils.TableProgramsCollectionTestBase;
+import org.apache.flink.table.api.scala.batch.utils.TableProgramsTestBase;
+import org.apache.flink.table.calcite.CalciteConfig;
+import org.apache.flink.table.calcite.CalciteConfigBuilder;
+import org.apache.flink.table.plan.schema.DataSetTable;
+import org.apache.flink.table.plan.stats.ColumnStats;
+import org.apache.flink.table.plan.stats.FlinkStatistic;
+import org.apache.flink.table.plan.stats.TableStats;
+import org.apache.flink.test.javaApiOperators.util.CollectionDataSets;
+import org.apache.flink.types.Row;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.calcite.tools.RuleSets;
-import org.apache.flink.api.java.DataSet;
-import org.apache.flink.api.java.ExecutionEnvironment;
-import org.apache.flink.table.api.java.BatchTableEnvironment;
-import org.apache.flink.api.java.tuple.Tuple3;
-import org.apache.flink.api.java.tuple.Tuple4;
-import org.apache.flink.api.java.tuple.Tuple5;
-import org.apache.flink.api.java.typeutils.TupleTypeInfo;
-import org.apache.flink.table.api.scala.batch.utils.TableProgramsCollectionTestBase;
-import org.apache.flink.table.api.scala.batch.utils.TableProgramsTestBase;
-import org.apache.flink.types.Row;
-import org.apache.flink.table.calcite.CalciteConfig;
-import org.apache.flink.table.calcite.CalciteConfigBuilder;
-import org.apache.flink.table.api.Table;
-import org.apache.flink.table.api.TableEnvironment;
-import org.apache.flink.table.api.TableException;
-import org.apache.flink.test.javaApiOperators.util.CollectionDataSets;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
 @RunWith(Parameterized.class)
 public class TableEnvironmentITCase extends TableProgramsCollectionTestBase {
@@ -182,6 +188,48 @@ public class TableEnvironmentITCase extends TableProgramsCollectionTestBase {
 				"13,5\n" + "14,5\n" + "15,5\n" +
 				"16,6\n" + "17,6\n" + "18,6\n" + "19,6\n" + "20,6\n" + "21,6\n";
 		compareResultAsText(results, expected);
+	}
+
+	@Test
+	public void testRegisteredTableReplace() throws Exception {
+		final String tableName = "MyTable";
+		ExecutionEnvironment env = ExecutionEnvironment.getExecutionEnvironment();
+		BatchTableEnvironment tableEnv = TableEnvironment.getTableEnvironment(env, config());
+
+		DataSet<Tuple3<Integer, Long, String>> ds = CollectionDataSets.get3TupleDataSet(env);
+		Table t = tableEnv.fromDataSet(ds);
+		tableEnv.registerTable(tableName, t);
+		Table resultTable = tableEnv.sql("select f0, f1 from " + tableName + " where f0>7");
+
+		List<Row> results = tableEnv.toDataSet(resultTable, Row.class).collect();
+		String expected = "9,4\n" + "10,4\n" + "11,5\n" + "12,5\n" +
+				"13,5\n" + "14,5\n" + "15,5\n" +
+				"16,6\n" + "17,6\n" + "18,6\n" + "19,6\n" + "20,6\n" + "21,6\n" + "8,4\n";
+		compareResultAsText(results, expected);
+
+		// replace table
+		DataSet<Tuple3<Integer, Long, String>> filteredDs = ds.filter(
+				new FilterFunction<Tuple3<Integer, Long, String>>() {
+					@Override
+					public boolean filter(Tuple3<Integer, Long, String> value) throws Exception {
+						return value.f0 > 8;
+					}
+				});
+		tableEnv.replaceRegisteredTable(tableName,
+				new DataSetTable(
+						filteredDs,
+						new int[]{0, 1, 2},
+						new String[]{"f0", "f1", "f2"},
+						FlinkStatistic.of(
+								new TableStats(1000L, new HashMap<String, ColumnStats>()))));
+
+		Table newResultTable = tableEnv.sql("select f0, f1 from " + tableName + " where f0>7");
+
+		List<Row> newResults = tableEnv.toDataSet(newResultTable, Row.class).collect();
+		String newExpected = "9,4\n" + "10,4\n" + "11,5\n" + "12,5\n" +
+				"13,5\n" + "14,5\n" + "15,5\n" +
+				"16,6\n" + "17,6\n" + "18,6\n" + "19,6\n" + "20,6\n" + "21,6\n";
+		compareResultAsText(newResults, newExpected);
 	}
 
 	@Test(expected = TableException.class)

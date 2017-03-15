@@ -71,3 +71,61 @@ object ValidationException {
   * Exception for unwanted method calling on unresolved expression.
   */
 case class UnresolvedException(msg: String) extends RuntimeException(msg)
+
+/**
+  * Exception for operation on a nonexistent table
+  *
+  * @param tableIdentifier table identifier
+  * @param cause
+  */
+case class TableNotExistException(
+    tableIdentifier: String,
+    cause: Throwable)
+    extends RuntimeException(s"table ${tableIdentifier} does not exist!", cause) {
+
+  def this(tableIdentifier: String) = this(tableIdentifier, null)
+
+}
+
+/**
+  * Exception for adding an already existed table
+  *
+  * @param tableIdentifier table identifier
+  * @param cause
+  */
+case class TableAlreadyExistException(
+    tableIdentifier: String,
+    cause: Throwable)
+    extends RuntimeException(s"table ${tableIdentifier} already exists!", cause) {
+
+  def this(tableIdentifier: String) = this(tableIdentifier, null)
+
+}
+
+/**
+  * Exception for operation on a nonexistent database
+  *
+  * @param databaseIdentifier database identifier
+  * @param cause
+  */
+case class DatabaseNotExistException(
+    databaseIdentifier: String,
+    cause: Throwable)
+    extends RuntimeException(s"database ${databaseIdentifier} does not exist!", cause) {
+
+  def this(databaseIdentifier: String) = this(databaseIdentifier, null)
+}
+
+/**
+  * Exception for adding an already existed database
+  *
+  * @param databaseIdentifier database identifier
+  * @param cause
+  */
+case class DatabaseAlreadyExistException(
+    databaseIdentifier: String,
+    cause: Throwable)
+    extends RuntimeException(s"database ${databaseIdentifier} already exists!", cause) {
+
+  def this(databaseIdentifier: String) = this(databaseIdentifier, null)
+}
