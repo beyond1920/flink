@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.api
 
+import org.apache.flink.table.catalog.ExternalCatalogTypes.PartitionSpec
+
 /**
   * Exception for all errors occurring during expression parsing.
   */
@@ -71,3 +73,135 @@ object ValidationException {
   * Exception for unwanted method calling on unresolved expression.
   */
 case class UnresolvedException(msg: String) extends RuntimeException(msg)
+
+/**
+  * Exception for operation on a nonexistent partition
+  *
+  * @param db            database name
+  * @param table         table name
+  * @param partitionSpec partition spec
+  * @param cause
+  */
+case class PartitionNotExistException(
+    db: String,
+    table: String,
+    partitionSpec: PartitionSpec,
+    cause: Throwable)
+    extends RuntimeException(
+      s"partition $partitionSpec does not exist in table $db.$table!", cause) {
+
+  def this(db: String, table: String, partitionSpec: PartitionSpec) =
+    this(db, table, partitionSpec, null)
+
+}
+
+/**
+  * Exception for adding an already existed partition
+  *
+  * @param db            database name
+  * @param table         table name
+  * @param partitionSpec partition spec
+  * @param cause
+  */
+case class PartitionAlreadyExistException(
+    db: String,
+    table: String,
+    partitionSpec: PartitionSpec,
+    cause: Throwable)
+    extends RuntimeException(
+      s"partition [${partitionSpec.mkString(", ")}] already exists in table $db.$table!", cause) {
+
+  def this(db: String, table: String, partitionSpec: PartitionSpec) =
+    this(db, table, partitionSpec, null)
+
+}
+
+/**
+  * Exception for operation on a nonexistent table
+  *
+  * @param db    database name
+  * @param table table name
+  * @param cause
+  */
+case class TableNotExistException(
+    db: String,
+    table: String,
+    cause: Throwable)
+    extends RuntimeException(s"table $db.$table does not exist!", cause) {
+
+  def this(db: String, table: String) = this(db, table, null)
+
+}
+
+/**
+  * Exception for adding an already existed table
+  *
+  * @param db    database name
+  * @param table table name
+  * @param cause
+  */
+case class TableAlreadyExistException(
+    db: String,
+    table: String,
+    cause: Throwable)
+    extends RuntimeException(s"table $db.$table already exists!", cause) {
+
+  def this(db: String, table: String) = this(db, table, null)
+
+}
+
+/**
+  * Exception for operation on a nonexistent database
+  *
+  * @param db database name
+  * @param cause
+  */
+case class DatabaseNotExistException(
+    db: String,
+    cause: Throwable)
+    extends RuntimeException(s"database $db does not exist!", cause) {
+
+  def this(db: String) = this(db, null)
+}
+
+/**
+  * Exception for adding an already existed database
+  *
+  * @param db database name
+  * @param cause
+  */
+case class DatabaseAlreadyExistException(
+    db: String,
+    cause: Throwable)
+    extends RuntimeException(s"database $db already exists!", cause) {
+
+  def this(db: String) = this(db, null)
+}
+
+/**
+  * Exception for operation on a nonexistent external catalog table type
+  *
+  * @param tableType external catalog table type
+  * @param cause
+  */
+case class ExternalCatalogTableTypeNotExistException(
+    tableType: String,
+    cause: Throwable)
+    extends RuntimeException(s"external catalog table type $tableType does not exist!", cause) {
+
+  def this(tableType: String) = this(tableType, null)
+}
+
+/**
+  * Exception for adding an already existed external catalog
+  *
+  * @param tableType external catalog table type
+  * @param cause
+  */
+case class ExternalCatalogTableTypeAlreadyExistException(
+    tableType: String,
+    cause: Throwable)
+    extends RuntimeException(s"external catalog table type $tableType already exists!", cause) {
+
+  def this(tableType: String) = this(tableType, null)
+}
