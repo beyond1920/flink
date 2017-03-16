@@ -511,15 +511,15 @@ case class Join(
 }
 
 case class CatalogNode(
-    tableName: String,
-    rowType: RelDataType) extends LeafNode {
+    rowType: RelDataType,
+    tablePath: String*) extends LeafNode {
 
   val output: Seq[Attribute] = rowType.getFieldList.asScala.map { field =>
     ResolvedFieldReference(field.getName, FlinkTypeFactory.toTypeInfo(field.getType))
   }
 
   override protected[logical] def construct(relBuilder: RelBuilder): RelBuilder = {
-    relBuilder.scan(tableName)
+    relBuilder.scan(tablePath.asJavaCollection)
   }
 
   override def validate(tableEnv: TableEnvironment): LogicalNode = this
