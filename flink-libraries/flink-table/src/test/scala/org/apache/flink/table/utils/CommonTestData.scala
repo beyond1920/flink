@@ -60,7 +60,7 @@ object CommonTestData {
     )
   }
 
-  def getInMemoryTestCatalog: ReadonlyExternalCatalog = {
+  def getInMemoryTestCatalog: ExternalCatalog = {
     val csvRecord1 = Seq(
       "1#1#Hi",
       "2#2#Hello",
@@ -102,7 +102,7 @@ object CommonTestData {
     )
     val tempFilePath2 = writeToTempFile(csvRecord2.mkString("$"), "csv-test2", "tmp")
     val properties2 = new util.HashMap[String, String]()
-    properties2.put("path", tempFilePath1)
+    properties2.put("path", tempFilePath2)
     properties2.put("fieldDelim", "#")
     properties2.put("rowDelim", "$")
     val externalCatalogTable2 = ExternalCatalogTable(
