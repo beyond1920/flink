@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.catalog
 
-import java.util.{HashMap => JHashMap, Map => JMap}
+import java.util.{HashMap => JHashMap, Map => JMap, LinkedHashSet => JLinkedHashSet}
 import java.lang.{Long => JLong}
 
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -44,6 +44,8 @@ case class ExternalCatalogTable(
     properties: JMap[String, String] = new JHashMap(),
     stats: TableStats = null,
     comment: String = null,
+    partitionColumnNames: JLinkedHashSet[String] = new JLinkedHashSet(),
+    isPartitioned: Boolean = false,
     createTime: JLong = System.currentTimeMillis,
     lastAccessTime: JLong = -1L)
 
