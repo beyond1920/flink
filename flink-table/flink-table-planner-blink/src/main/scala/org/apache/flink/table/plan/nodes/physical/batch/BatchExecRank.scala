@@ -20,9 +20,9 @@ package org.apache.flink.table.plan.nodes.physical.batch
 
 import org.apache.flink.table.api.TableException
 import org.apache.flink.table.plan.cost.{FlinkCost, FlinkCostFactory}
-import org.apache.flink.table.plan.nodes.calcite.RankType.RankType
-import org.apache.flink.table.plan.nodes.calcite.{ConstantRankRange, Rank, RankRange, RankType}
+import org.apache.flink.table.plan.nodes.calcite.Rank
 import org.apache.flink.table.plan.util.RelExplainUtil
+import org.apache.flink.table.runtime.rank.{ConstantRankRange, RankRange, RankType}
 
 import org.apache.calcite.plan._
 import org.apache.calcite.rel._
@@ -64,7 +64,7 @@ class BatchExecRank(
 
   require(rankType == RankType.RANK, "Only RANK is supported now")
   val (rankStart, rankEnd) = rankRange match {
-    case r: ConstantRankRange => (r.rankStart, r.rankEnd)
+    case r: ConstantRankRange => (r.getRankStart, r.getRankEnd)
     case o => throw new TableException(s"$o is not supported now")
   }
 
