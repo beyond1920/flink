@@ -27,6 +27,7 @@ import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.streaming.api.operators.KeyContext;
 import org.apache.flink.table.dataformat.BaseRow;
+import org.apache.flink.table.dataformat.BinaryRow;
 import org.apache.flink.table.dataformat.GenericRow;
 import org.apache.flink.table.dataformat.JoinedRow;
 import org.apache.flink.table.dataformat.util.BaseRowUtil;
@@ -79,7 +80,7 @@ public abstract class AbstractRankFunction extends KeyedProcessFunctionWithClean
 	private final boolean generateRetraction;
 	protected final boolean outputRankNumber;
 	protected final BaseRowTypeInfo inputRowType;
-	protected final KeySelector<BaseRow, BaseRow> sortKeySelector;
+	protected final KeySelector<BaseRow, BinaryRow> sortKeySelector;
 
 	protected KeyContext keyContext;
 	private final boolean isConstantRankEnd;

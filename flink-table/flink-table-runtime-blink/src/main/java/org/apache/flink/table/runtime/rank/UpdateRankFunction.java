@@ -31,6 +31,7 @@ import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
 import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.table.dataformat.BaseRow;
+import org.apache.flink.table.dataformat.BinaryRow;
 import org.apache.flink.table.generated.GeneratedRecordComparator;
 import org.apache.flink.table.generated.GeneratedRecordEqualiser;
 import org.apache.flink.table.runtime.keyselector.BaseRowKeySelector;
@@ -85,7 +86,7 @@ public class UpdateRankFunction extends AbstractRankFunction implements Checkpoi
 	private transient LRUMap<BaseRow, Map<BaseRow, RankRow>> kvRowKeyMap;
 
 	private final TypeSerializer<BaseRow> inputRowSer;
-	private final KeySelector<BaseRow, BaseRow> rowKeySelector;
+	private final KeySelector<BaseRow, BinaryRow> rowKeySelector;
 
 	public UpdateRankFunction(long minRetentionTime, long maxRetentionTime, BaseRowTypeInfo inputRowType,
 			BaseRowKeySelector rowKeySelector, GeneratedRecordComparator generatedRecordComparator,

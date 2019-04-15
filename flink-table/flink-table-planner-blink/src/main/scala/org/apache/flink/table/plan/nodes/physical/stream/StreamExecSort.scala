@@ -19,12 +19,24 @@
 package org.apache.flink.table.plan.nodes.physical.stream
 
 import org.apache.flink.annotation.Experimental
-import org.apache.flink.table.plan.util.RelExplainUtil
+import org.apache.flink.streaming.api.transformations.{OneInputTransformation, StreamTransformation}
+import org.apache.flink.table
+import org.apache.flink.table.api.{StreamTableEnvironment, TableConfigOptions, TableException}
+import org.apache.flink.table.calcite.FlinkTypeFactory
+import org.apache.flink.table.codegen.SortCodeGenerator
+import org.apache.flink.table.dataformat.BaseRow
+import org.apache.flink.table.plan.nodes.exec.{ExecNode, StreamExecNode}
+import org.apache.flink.table.plan.util.{RelExplainUtil, SortUtil}
+import org.apache.flink.table.runtime.keyselector.NullBinaryRowKeySelector
 
 import org.apache.calcite.plan.{RelOptCluster, RelTraitSet}
 import org.apache.calcite.rel._
 import org.apache.calcite.rel.core.Sort
 import org.apache.calcite.rex.RexNode
+
+import java.util
+
+import scala.collection.JavaConversions._
 
 /**
   * Stream physical RelNode for [[Sort]].
@@ -45,7 +57,8 @@ class StreamExecSort(
     inputRel: RelNode,
     sortCollation: RelCollation)
   extends Sort(cluster, traitSet, inputRel, sortCollation)
-  with StreamPhysicalRel {
+  with StreamPhysicalRel
+  with StreamExecNode[BaseRow] {
 
   /**
     * this node will not produce or consume retraction message
@@ -73,6 +86,65 @@ class StreamExecSort(
   override def explainTerms(pw: RelWriter): RelWriter = {
     pw.input("input", getInput())
       .item("orderBy", RelExplainUtil.collationToString(sortCollation, getRowType))
+  }
+
+  //~ ExecNode methods -----------------------------------------------------------
+
+  /**
+    * Returns an array of this node's inputs. If there are no inputs,
+    * returns an empty list, not null.
+    *
+    * @return Array of this node's inputs
+    */
+  override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {
+    List(getInput.asInstanceOf[ExecNode[StreamTableEnvironment, _]])
+  }
+
+  /**
+    * Internal method, translates this node into a Flink operator.
+    *
+    * @param tableEnv The [[StreamTableEnvironment]] of the translated Table.
+    */
+  override protected def translateToPlanInternal(
+      tableEnv: StreamTableEnvironment): StreamTransformation[BaseRow] = {
+
+    if (!tableEnv.getConfig.getConf.getBoolean(
+      TableConfigOptions.SQL_EXEC_SORT_NON_TEMPORAL_ENABLED)) {
+      throw new TableException("Sort on a non-time-attribute field is not supported.")
+    }
+
+    val inputTransformation = getInputNodes.get(0).translateToPlan(tableEnv)
+      .asInstanceOf[StreamTransformation[BaseRow]]
+
+    val inputType = FlinkTypeFactory.toInternalRowType(getInput.getRowType)
+    val outputType = FlinkTypeFactory.toInternalRowType(getRowType)
+
+    val sortOperator = {
+      val (keys, orders, nullsIsLast) = SortUtil.getKeysAndOrders(
+        sortCollation.getFieldCollations)
+
+      // sort code gen
+      val keyTypes = keys.map(inputType.getTypeAt)
+      val codeGen = new SortCodeGenerator(conf, keys, keyTypes, orders, nullsIsLast)
+
+      val generatedSorter = SorterHelper.createSorter(
+        inputTypeInfo.getFieldTypes.map(TypeConverters.createInternalTypeFromTypeInfo),
+        sortFields,
+        sortDirections,
+        nullsIsLast)
+
+      new StreamSortOperator(
+        inputTypeInfo,
+        generatedSorter,
+        memorySize)
+    }
+    val ret = new OneInputTransformation(
+      inputTransformation, "SortOperator", sortOperator, rowTypeInfo, 1)
+
+    val selector = new NullBinaryRowKeySelector
+    ret.setStateKeySelector(selector)
+    ret.setStateKeyType(selector.getProducedType)
+    ret
   }
 
 }
