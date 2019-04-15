@@ -111,7 +111,6 @@ class StreamExecRank(
       .item("select", getRowType.getFieldNames.mkString(", "))
   }
 
-
   //~ ExecNode methods -----------------------------------------------------------
 
   override def getInputNodes: util.List[ExecNode[StreamTableEnvironment, _]] = {

@@ -32,6 +32,8 @@ import org.apache.flink.table.typeutils.BaseRowTypeInfo;
  */
 public class BinaryRowKeySelector implements BaseRowKeySelector {
 
+	private static final long serialVersionUID = -2327761762415377059L;
+
 	private final int[] keyFields;
 	private final InternalType[] inputFieldTypes;
 	private final InternalType[] keyFieldTypes;
@@ -46,7 +48,7 @@ public class BinaryRowKeySelector implements BaseRowKeySelector {
 	}
 
 	@Override
-	public BaseRow getKey(BaseRow value) throws Exception {
+	public BinaryRow getKey(BaseRow value) throws Exception {
 		BinaryRow ret = new BinaryRow(keyFields.length);
 		BinaryRowWriter writer = new BinaryRowWriter(ret);
 		for (int i = 0; i < keyFields.length; i++) {

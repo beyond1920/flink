@@ -21,12 +21,13 @@ package org.apache.flink.table.runtime.keyselector;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.table.dataformat.BaseRow;
+import org.apache.flink.table.dataformat.BinaryRow;
 import org.apache.flink.table.typeutils.BaseRowTypeInfo;
 
 /**
- * BaseRowKeySelector takes an BaseRow and extracts the deterministic key for the BaseRow.
+ * BaseRowKeySelector takes an BaseRow and extracts the deterministic key for the BaseRow. The key type is BinaryRow.
  */
-public interface BaseRowKeySelector extends KeySelector<BaseRow, BaseRow>, ResultTypeQueryable<BaseRow> {
+public interface BaseRowKeySelector extends KeySelector<BaseRow, BinaryRow>, ResultTypeQueryable<BaseRow> {
 
 	BaseRowTypeInfo getProducedType();
 
