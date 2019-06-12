@@ -101,6 +101,8 @@ abstract class TableEnvironment(
     plannerContext.createRelBuilder(currentCatalogName, currentDatabase)
   }
 
+  private[flink] val operationTreeBuilder = new OperationTreeBuilder(this)
+
   /** Returns the Calcite [[FrameworkConfig]] of this TableEnvironment. */
   @VisibleForTesting
   private[flink] def getFlinkPlanner: FlinkPlannerImpl = {
