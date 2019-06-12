@@ -102,6 +102,19 @@ class FlinkRelBuilder(
     push(relNode)
     this
   }
+
+  def aggregate(
+      window: LogicalWindow,
+      groupKey: GroupKey,
+      namedProperties: List[NamedWindowProperty],
+      aggCalls: Iterable[AggCall]): RelBuilder = {
+    // build logical aggregate
+    val aggregate = super.aggregate(groupKey, aggCalls).build().asInstanceOf[LogicalAggregate]
+
+    // build logical window aggregate from it
+    push(LogicalWindowAggregate.create(window, namedProperties, aggregate))
+    this
+  }
 }
 
 object FlinkRelBuilder {
