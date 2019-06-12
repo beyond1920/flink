@@ -19,10 +19,17 @@
 package org.apache.flink.table.api
 
 import org.apache.flink.table.expressions.Expression
+import org.apache.flink.table.expressions.{Expression, LookupCallResolver}
 import org.apache.flink.table.functions.TemporalTableFunction
 import org.apache.flink.table.operations.QueryOperation
+import org.apache.flink.table.operations.OperationExpressionsUtils._
+import org.apache.flink.table.operations.{OperationTreeBuilder, QueryOperation}
+import org.apache.flink.table.plan.QueryOperationConverter
 
 import org.apache.calcite.rel.RelNode
+
+import _root_.scala.collection.JavaConversions._
+import _root_.scala.collection.JavaConverters._
 
 /**
   * The implementation of the [[Table]].
@@ -37,7 +44,11 @@ import org.apache.calcite.rel.RelNode
   */
 class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) extends Table {
 
+  private val operationTreeBuilder: OperationTreeBuilder = tableEnv.operationTreeBuilder
+
   private lazy val tableSchema: TableSchema = operationTree.getTableSchema
+
+  private[flink] val callResolver = new LookupCallResolver(tableEnv.functionCatalog)
 
   /**
     * Returns the Calcite RelNode represent this Table.
@@ -54,7 +65,20 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
 
   override def select(fields: String): Table = ???
 
-  override def select(fields: Expression*): Table = ???
+  override def select(fields: Expression*): Table = {
+    val expressionsWithResolvedCalls = fields.map(_.accept(callResolver)).asJava
+    val extracted = extractAggregationsAndProperties(expressionsWithResolvedCalls)
+
+    if (!extracted.getWindowProperties.isEmpty) {
+      throw new ValidationException("Window properties can only be used on windowed tables.")
+    }
+
+    if (!extracted.getAggregations.isEmpty) {
+      throw new TableException("Not supported yet!");
+    } else {
+      wrap(operationTreeBuilder.project(expressionsWithResolvedCalls, operationTree))
+    }
+  }
 
   override def createTemporalTableFunction(
     timeAttribute: String,
@@ -208,4 +232,8 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
   override def flatAggregate(tableAggregateFunction: String): FlatAggregateTable = ???
 
   override def flatAggregate(tableAggregateFunction: Expression): FlatAggregateTable = ???
+
+  private def wrap(operation: QueryOperation): Table = {
+    new TableImpl(tableEnv, operation)
+  }
 }

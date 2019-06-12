@@ -84,7 +84,7 @@ abstract class TableEnvironment(
   protected val defaultCatalogName: String = config.getBuiltInCatalogName
   protected val defaultDatabaseName: String = config.getBuiltInDatabaseName
 
-  private val functionCatalog = new FunctionCatalog
+  private[flink] val functionCatalog = new FunctionCatalog
 
   private val plannerContext: PlannerContext =
     new PlannerContext(
@@ -100,6 +100,8 @@ abstract class TableEnvironment(
     val currentDatabase = catalogManager.getCurrentDatabase
     plannerContext.createRelBuilder(currentCatalogName, currentDatabase)
   }
+
+  private[flink] val operationTreeBuilder = new OperationTreeBuilder(this)
 
   /** Returns the Calcite [[FrameworkConfig]] of this TableEnvironment. */
   @VisibleForTesting
