@@ -50,7 +50,9 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
 
   override def printSchema(): Unit = ???
 
-  override def select(fields: String): Table = ???
+  override def select(fields: String): Table = {
+    select(ExpressionParser.parseExpressionList(fields).asScala: _*)
+  }
 
   override def select(fields: Expression*): Table = {
     val expressionsWithResolvedCalls = fields.map(_.accept(callResolver)).asJava
@@ -75,17 +77,30 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
     timeAttribute: Expression,
     primaryKey: Expression): TemporalTableFunction = ???
 
-  override def as(fields: String): Table = ???
+  override def as(fields: String): Table = {
+    as(ExpressionParser.parseExpressionList(fields).asScala: _*)
+  }
 
-  override def as(fields: Expression*): Table = ???
+  override def as(fields: Expression*): Table = {
+    new TableImpl(tableEnv, operationTreeBuilder.alias(fields.asJava, operationTree))
+  }
 
-  override def filter(predicate: String): Table = ???
+  override def filter(predicate: String): Table = {
+    filter(ExpressionParser.parseExpression(predicate))
+  }
 
-  override def filter(predicate: Expression): Table = ???
+  override def filter(predicate: Expression): Table = {
+    val resolvedCallPredicate = predicate.accept(callResolver)
+    new TableImpl(tableEnv, operationTreeBuilder.filter(resolvedCallPredicate, operationTree))
+  }
 
-  override def where(predicate: String): Table = ???
+  override def where(predicate: String): Table = {
+    filter(predicate)
+  }
 
-  override def where(predicate: Expression): Table = ???
+  override def where(predicate: Expression): Table = {
+    filter(predicate)
+  }
 
   override def groupBy(fields: String): GroupedTable = ???
 
