@@ -19,15 +19,6 @@
 
 package org.apache.flink.table.functions.utils
 
-import java.lang.reflect.{Method, Modifier}
-import java.lang.{Integer => JInt, Long => JLong}
-import java.sql.{Date, Time, Timestamp}
-
-import com.google.common.primitives.Primitives
-import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeFactory}
-import org.apache.calcite.rex.{RexLiteral, RexNode}
-import org.apache.calcite.sql.`type`.SqlTypeName
-import org.apache.calcite.sql.{SqlFunction, SqlOperatorBinding}
 import org.apache.flink.api.common.functions.InvalidTypesException
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.java.typeutils._
