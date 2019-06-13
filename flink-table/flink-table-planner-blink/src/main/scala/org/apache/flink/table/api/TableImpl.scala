@@ -90,11 +90,23 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
 
   override def createTemporalTableFunction(
     timeAttribute: String,
-    primaryKey: String): TemporalTableFunction = ???
+    primaryKey: String): TemporalTableFunction = {
+    createTemporalTableFunction(
+      ExpressionParser.parseExpression(timeAttribute),
+      ExpressionParser.parseExpression(primaryKey))
+  }
 
   override def createTemporalTableFunction(
     timeAttribute: Expression,
-    primaryKey: Expression): TemporalTableFunction = ???
+    primaryKey: Expression): TemporalTableFunction = {
+    val resolvedTimeAttribute = operationTreeBuilder.resolveExpression(timeAttribute, operationTree)
+    val resolvedPrimaryKey = operationTreeBuilder.resolveExpression(primaryKey, operationTree)
+
+    TemporalTableFunctionImpl.create(
+      operationTree,
+      resolvedTimeAttribute,
+      resolvedPrimaryKey)
+  }
 
   override def as(fields: String): Table = {
     as(ExpressionParser.parseExpressionList(fields).asScala: _*)
@@ -348,29 +360,68 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
     new OverWindowedTableImpl(this, overWindows)
   }
 
-  override def addColumns(fields: String): Table = ???
+  override def addColumns(fields: String): Table = {
+    addColumns(ExpressionParser.parseExpressionList(fields): _*)
+  }
 
-  override def addColumns(fields: Expression*): Table = ???
+  override def addColumns(fields: Expression*): Table = {
+    addColumnsOperation(false, fields: _*)
+  }
 
-  override def addOrReplaceColumns(fields: String): Table = ???
+  override def addOrReplaceColumns(fields: String): Table = {
+    addOrReplaceColumns(ExpressionParser.parseExpressionList(fields): _*)
+  }
 
-  override def addOrReplaceColumns(fields: Expression*): Table = ???
+  override def addOrReplaceColumns(fields: Expression*): Table = {
+    addColumnsOperation(true, fields: _*)
+  }
 
-  override def renameColumns(fields: String): Table = ???
+  private def addColumnsOperation(replaceIfExist: Boolean, fields: Expression*): Table = {
+    val expressionsWithResolvedCalls = fields.map(_.accept(callResolver)).asJava
+    val extracted = extractAggregationsAndProperties(expressionsWithResolvedCalls)
 
-  override def renameColumns(fields: Expression*): Table = ???
+    val aggNames = extracted.getAggregations
 
-  override def dropColumns(fields: String): Table = ???
+    if(aggNames.nonEmpty){
+      throw new ValidationException(
+        s"The added field expression cannot be an aggregation, found [${aggNames.head}].")
+    }
 
-  override def dropColumns(fields: Expression*): Table = ???
+    wrap(operationTreeBuilder.addColumns(
+      replaceIfExist, expressionsWithResolvedCalls, operationTree))
+  }
 
-  override def map(mapFunction: String): Table = ???
+  override def renameColumns(fields: String): Table = {
+    renameColumns(ExpressionParser.parseExpressionList(fields): _*)
+  }
 
-  override def map(mapFunction: Expression): Table = ???
+  override def renameColumns(fields: Expression*): Table = {
+    wrap(operationTreeBuilder.renameColumns(fields, operationTree))
+  }
 
-  override def flatMap(tableFunction: String): Table = ???
+  override def dropColumns(fields: String): Table = {
+    dropColumns(ExpressionParser.parseExpressionList(fields): _*)
+  }
 
-  override def flatMap(tableFunction: Expression): Table = ???
+  override def dropColumns(fields: Expression*): Table = {
+    wrap(operationTreeBuilder.dropColumns(fields, operationTree))
+  }
+
+  override def map(mapFunction: String): Table = {
+    map(ExpressionParser.parseExpression(mapFunction))
+  }
+
+  override def map(mapFunction: Expression): Table = {
+    wrap(operationTreeBuilder.map(mapFunction, operationTree))
+  }
+
+  override def flatMap(tableFunction: String): Table = {
+    flatMap(ExpressionParser.parseExpression(tableFunction))
+  }
+
+  override def flatMap(tableFunction: Expression): Table = {
+    wrap(operationTreeBuilder.flatMap(tableFunction, operationTree))
+  }
 
   override def aggregate(aggregateFunction: String): AggregatedTable = {
     aggregate(ExpressionParser.parseExpression(aggregateFunction))
