@@ -43,6 +43,7 @@ import org.apache.flink.util.Preconditions;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.avatica.util.TimeUnit;
+import org.apache.calcite.avatica.util.TimeUnitRange;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
@@ -565,7 +566,64 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					TimeUnit.DAY, TimeUnit.SECOND, SqlParserPos.ZERO);
 			return relBuilder.getRexBuilder().makeIntervalLiteral(interval, intervalQualifier);
 		} else {
-			return relBuilder.literal(extractValue(valueLiteral, Object.class));
+			Object object = extractValue(valueLiteral, Object.class);
+			if (object instanceof TimePointUnit) {
+				throw new UnsupportedOperationException();
+			} else if (object instanceof TimeIntervalUnit) {
+				TimeUnitRange value;
+				switch ((TimeIntervalUnit) object) {
+					case YEAR:
+						value = TimeUnitRange.YEAR;
+						break;
+					case YEAR_TO_MONTH:
+						value = TimeUnitRange.YEAR_TO_MONTH;
+						break;
+					case QUARTER:
+						value = TimeUnitRange.QUARTER;
+						break;
+					case MONTH:
+						value = TimeUnitRange.MONTH;
+						break;
+					case WEEK:
+						value = TimeUnitRange.WEEK;
+						break;
+					case DAY:
+						value = TimeUnitRange.DAY;
+						break;
+					case DAY_TO_HOUR:
+						value = TimeUnitRange.DAY_TO_HOUR;
+						break;
+					case DAY_TO_MINUTE:
+						value = TimeUnitRange.DAY_TO_MINUTE;
+						break;
+					case DAY_TO_SECOND:
+						value = TimeUnitRange.DAY_TO_SECOND;
+						break;
+					case HOUR:
+						value = TimeUnitRange.HOUR;
+						break;
+					case SECOND:
+						value = TimeUnitRange.SECOND;
+						break;
+					case HOUR_TO_MINUTE:
+						value = TimeUnitRange.HOUR_TO_MINUTE;
+						break;
+					case HOUR_TO_SECOND:
+						value = TimeUnitRange.HOUR_TO_SECOND;
+						break;
+					case MINUTE:
+						value = TimeUnitRange.MINUTE;
+						break;
+					case MINUTE_TO_SECOND:
+						value = TimeUnitRange.MINUTE_TO_SECOND;
+						break;
+					default:
+						throw new UnsupportedOperationException();
+				}
+				return relBuilder.getRexBuilder().makeFlag(value);
+			} else {
+				return relBuilder.literal(extractValue(valueLiteral, Object.class));
+			}
 		}
 	}
 
