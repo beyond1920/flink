@@ -195,7 +195,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 
 		@Override
 		public RelNode visit(DistinctQueryOperation distinct) {
-			throw new UnsupportedOperationException("Unsupported now");
+			return relBuilder.distinct().build();
 		}
 
 		@Override
@@ -209,9 +209,11 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 		public <U> RelNode visit(CalculatedQueryOperation<U> calculatedTable) {
 			DataType resultType = fromLegacyInfoToDataType(calculatedTable.getResultType());
 			TableFunction<?> tableFunction = calculatedTable.getTableFunction();
+			String[] fieldNames = calculatedTable.getTableSchema().getFieldNames();
 
 			FlinkTypeFactory typeFactory = relBuilder.getTypeFactory();
-			FlinkTableFunction function = new TypedFlinkTableFunction(tableFunction, resultType);
+			TypedFlinkTableFunction function = new TypedFlinkTableFunction(
+					tableFunction, fieldNames, resultType);
 			TableSqlFunction sqlFunction = new TableSqlFunction(
 					tableFunction.functionIdentifier(),
 					tableFunction.toString(),
@@ -233,7 +235,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 
 		@Override
 		public RelNode visit(CatalogQueryOperation catalogTable) {
-			return relBuilder.distinct().build();
+			return relBuilder.scan(catalogTable.getTablePath()).build();
 		}
 
 		@Override
@@ -414,5 +416,4 @@ private class AggregateVisitor extends ExpressionDefaultVisitor<AggCall> {
 	private RexNode convertExprToRexNode(Expression expr) {
 		return expr.accept(callResolver).accept(rexNodeConverter);
 	}
-
 }
