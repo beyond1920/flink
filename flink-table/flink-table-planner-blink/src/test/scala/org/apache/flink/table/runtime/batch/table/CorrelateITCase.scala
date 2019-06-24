@@ -19,17 +19,16 @@
 package org.apache.flink.table.runtime.batch.table
 
 import org.apache.flink.api.scala._
-import org.apache.flink.table.api.{DataTypes, Table, ValidationException}
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.expressions.utils.{Func1, Func18, RichFunc2}
+import org.apache.flink.table.api.{DataTypes, Table, ValidationException}
+import org.apache.flink.table.expressions.utils.{Func1, Func18, FuncWithOpen, RichFunc2}
 import org.apache.flink.table.runtime.utils.JavaUserDefinedTableFunctions.JavaTableFunc0
 import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase, CollectionBatchExecTable, UserDefinedFunctionTestUtils}
 import org.apache.flink.table.util.DateTimeTestUtil._
 import org.apache.flink.table.util._
 import org.apache.flink.test.util.TestBaseUtils
 
-import org.junit.Assert._
-import org.junit.{Ignore, Test}
+import org.junit.{Assert, Test}
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
@@ -57,6 +56,19 @@ class CorrelateITCase extends BatchTestBase {
 
   @Test
   def testLeftOuterJoinWithoutPredicates(): Unit = {
+    val in = testData.as('a, 'b, 'c)
+
+    val func2 = new TableFunc2
+    val result = in.leftOuterJoinLateral(func2('c) as ('s, 'l)).select('c, 's, 'l)
+    val results = executeQuery(result)
+    val expected = "Jack#22,Jack,4\n" + "Jack#22,22,2\n" + "John#19,John,4\n" +
+      "John#19,19,2\n" + "Anna#44,Anna,4\n" + "Anna#44,44,2\n" + "nosharp,null,null"
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
+  @Test
+  def testLeftOuterJoinWithSplit(): Unit = {
+    tEnv.getConfig.setMaxGeneratedCodeLength(1) // split every field
     val in = testData.as('a, 'b, 'c)
 
     val func2 = new TableFunc2
@@ -179,7 +191,6 @@ class CorrelateITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
-  @Ignore //TODO
   @Test
   def testLongAndTemporalTypes(): Unit = {
     val in = testData.as('a, 'b, 'c)
@@ -277,7 +288,6 @@ class CorrelateITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
-  @Ignore //TODO support varargs
   @Test
   def testTableFunctionWithVariableArguments(): Unit = {
     val varArgsFunc0 = new VarArgsFunc0
@@ -301,13 +311,13 @@ class CorrelateITCase extends BatchTestBase {
       "nosharp,nosharp"
     val results = executeQuery(result)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
-
-    // Test for empty cases
+//
+//    // Test for empty cases
     val result0 = testData
       .select('c)
       .joinLateral(varArgsFunc0())
     val results0 = executeQuery(result0)
-    assertTrue(results0.isEmpty)
+    Assert.assertTrue(results0.isEmpty)
   }
 
   @Test
@@ -344,7 +354,7 @@ class CorrelateITCase extends BatchTestBase {
 //    val in2 = testData.as('a, 'b, 'c)
 //    val func0 = new TableFunc0
 //    val left = in.select('c.concat_agg("#") as 'd)
-//    val result = in2.joinLateral(left).as('a, 'b, 'c, 'd)
+//    val result = in2.join(left).as('a, 'b, 'c, 'd)
 //      .joinLateral(func0('c) as ('name, 'age))
 //      .select('a, 'c, 'name, 'age)
 //
@@ -352,6 +362,31 @@ class CorrelateITCase extends BatchTestBase {
 //    val expected = "1,Jack#22,Jack,22\n2,John#19,John,19\n3,Anna#44,Anna,44"
 //    TestBaseUtils.compareResultAsText(results.asJava, expected)
 //  }
+
+  @Test
+  def testTableFunctionCollectorOpenClose(): Unit = {
+    val t = testData.as('a, 'b, 'c)
+    val func0 = new TableFunc0
+    val func = new FuncWithOpen
+
+    val result = t
+      .joinLateral(func0('c) as('d, 'e))
+      .where(func('e))
+      .select('c, 'd, 'e)
+
+    val results = executeQuery(result)
+
+    val expected = Seq (
+      "Jack#22,Jack,22",
+      "John#19,John,19",
+      "Anna#44,Anna,44"
+    )
+
+    TestBaseUtils.compareResultAsText(
+      results.asJava,
+      expected.sorted.mkString("\n")
+    )
+  }
 
   private def testData: Table = {
 

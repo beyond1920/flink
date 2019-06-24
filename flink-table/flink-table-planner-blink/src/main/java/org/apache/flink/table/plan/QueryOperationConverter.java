@@ -34,7 +34,6 @@ import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.expressions.RexNodeConverter;
 import org.apache.flink.table.expressions.RexPlannerExpression;
 import org.apache.flink.table.expressions.RowtimeAttribute;
-import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
 import org.apache.flink.table.expressions.WindowEnd;
 import org.apache.flink.table.expressions.WindowReference;
@@ -89,13 +88,13 @@ import org.apache.calcite.tools.RelBuilder.GroupKey;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import scala.Some;
 
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.toList;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.isFunctionOfKind;
-import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.expressions.ExpressionUtils.extractValue;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
 import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
@@ -419,13 +418,15 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 		private static final int numberOfJoinInputs = 2;
 
 		@Override
-		public RexNode visit(CallExpression unresolvedCall) {
-			final Expression[] newChildren = unresolvedCall.getChildren().stream().map(expr -> {
+		public RexNode visit(CallExpression callExpression) {
+			final List<ResolvedExpression> newChildren = callExpression.getChildren().stream().map(expr -> {
 				RexNode convertedNode = expr.accept(this);
-				return (Expression) new RexPlannerExpression(convertedNode);
-			}).toArray(Expression[]::new);
+				return new RexPlannerExpression(convertedNode, ((ResolvedExpression) expr).getOutputDataType());
+			}).collect(Collectors.toList());
 
-			UnresolvedCallExpression newCall = unresolvedCall(unresolvedCall.getFunctionDefinition(), newChildren);
+			CallExpression newCall = new CallExpression(
+					callExpression.getObjectIdentifier().get(), callExpression.getFunctionDefinition(), newChildren,
+					callExpression.getOutputDataType());
 			return convertExprToRexNode(newCall);
 		}
 

@@ -19,14 +19,14 @@
 package org.apache.flink.table.expressions.rules;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.operations.ExpressionTypeInfer;
 import org.apache.flink.table.plan.logical.LogicalOverWindow;
+import org.apache.flink.table.types.DataType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +34,6 @@ import java.util.stream.Collectors;
 
 import static java.util.Arrays.asList;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
-import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
 
 /**
  * Joins call to {@link BuiltInFunctionDefinitions#OVER} with corresponding over window
@@ -88,8 +87,8 @@ final class OverWindowResolverRule implements ResolverRule {
 		private Expression calculateOverWindowFollowing(LogicalOverWindow referenceWindow) {
 			return referenceWindow.following().orElseGet(() -> {
 						Expression preceding = referenceWindow.preceding();
-						TypeInformation<?> resultType = fromDataTypeToLegacyInfo(ExpressionTypeInfer.infer(preceding));
-						if (resultType == BasicTypeInfo.LONG_TYPE_INFO) {
+						DataType resultType = ExpressionTypeInfer.infer(preceding);
+						if (resultType == DataTypes.BIGINT()) {
 							return unresolvedCall(BuiltInFunctionDefinitions.CURRENT_ROW);
 						} else {
 							return unresolvedCall(BuiltInFunctionDefinitions.CURRENT_RANGE);

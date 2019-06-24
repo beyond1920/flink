@@ -93,7 +93,6 @@ class SetOperatorsITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
-  @Ignore //TODO not support yet.
   @Test
   def testMinusAll(): Unit = {
     val ds1 = CollectionBatchExecTable.getSmall3TupleDataSet(tEnv)
@@ -155,7 +154,6 @@ class SetOperatorsITCase extends BatchTestBase {
   }
 
   @Test
-  @Ignore //TODO bug?
   def testIntersectAll(): Unit = {
     val data1 = new mutable.MutableList[Int]
     data1 += (1, 1, 1, 2, 2)

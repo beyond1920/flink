@@ -18,20 +18,25 @@
 
 package org.apache.flink.table.expressions;
 
+import org.apache.flink.table.types.DataType;
+
 import org.apache.calcite.rex.RexNode;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
  * Dummy wrapper for expressions that were converted to RexNode in a different way.
  */
-public class RexPlannerExpression implements Expression {
+public class RexPlannerExpression implements ResolvedExpression {
 
 	private RexNode rexNode;
+	private DataType outputDataType;
 
-	public RexPlannerExpression(RexNode rexNode) {
+	public RexPlannerExpression(RexNode rexNode, DataType outputDataType) {
 		this.rexNode = rexNode;
+		this.outputDataType = outputDataType;
 	}
 
 	public RexNode getRexNode() {
@@ -53,4 +58,13 @@ public class RexPlannerExpression implements Expression {
 		return visitor.visit(this);
 	}
 
+	@Override
+	public DataType getOutputDataType() {
+		return outputDataType;
+	}
+
+	@Override
+	public List<ResolvedExpression> getResolvedChildren() {
+		return new ArrayList<>();
+	}
 }

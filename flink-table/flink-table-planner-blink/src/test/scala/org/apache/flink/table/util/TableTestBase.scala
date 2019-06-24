@@ -134,7 +134,11 @@ abstract class TableTestUtil(test: TableTestBase) {
     }
     val dataType = TypeConversions.fromLegacyInfoToDataType(typeInfo)
     val tableEnv = getTableEnv
-    val (fieldNames, _) = tableEnv.getFieldInfo(dataType, fields.map(_.name).toArray)
+    val (fieldNames, _) = if (fields.isEmpty) {
+      tableEnv.getFieldInfo(dataType)
+    } else {
+      tableEnv.getFieldInfo(dataType, fields.map(_.name).toArray)
+    }
     addTableSource(name, fieldTypes, fieldNames)
   }
 

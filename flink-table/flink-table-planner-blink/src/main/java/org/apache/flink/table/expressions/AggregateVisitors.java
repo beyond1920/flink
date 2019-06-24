@@ -66,17 +66,17 @@ public class AggregateVisitors {
 		AGG_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.VAR_POP, FlinkSqlOperatorTable.VAR_POP);
 		AGG_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.VAR_SAMP, FlinkSqlOperatorTable.VAR_SAMP);
 		AGG_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.COLLECT, FlinkSqlOperatorTable.COLLECT);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.DENSE_RANK, FlinkSqlOperatorTable.DENSE_RANK);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.FIRST_VALUE, FlinkSqlOperatorTable.FIRST_VALUE);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.STDDEV, FlinkSqlOperatorTable.STDDEV);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.LEAD, FlinkSqlOperatorTable.LEAD);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.LAG, FlinkSqlOperatorTable.LAG);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.LAST_VALUE, FlinkSqlOperatorTable.LAST_VALUE);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.RANK, FlinkSqlOperatorTable.RANK);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.ROW_NUMBER, FlinkSqlOperatorTable.ROW_NUMBER);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.SINGLE_VALUE, FlinkSqlOperatorTable.SINGLE_VALUE);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.CONCAT_AGG, FlinkSqlOperatorTable.CONCAT_AGG);
-		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.VARIANCE, FlinkSqlOperatorTable.VARIANCE);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.DENSE_RANK, FlinkSqlOperatorTable.DENSE_RANK);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.FIRST_VALUE, FlinkSqlOperatorTable.FIRST_VALUE);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.STDDEV, FlinkSqlOperatorTable.STDDEV);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.LEAD, FlinkSqlOperatorTable.LEAD);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.LAG, FlinkSqlOperatorTable.LAG);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.LAST_VALUE, FlinkSqlOperatorTable.LAST_VALUE);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.RANK, FlinkSqlOperatorTable.RANK);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.ROW_NUMBER, FlinkSqlOperatorTable.ROW_NUMBER);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.SINGLE_VALUE, FlinkSqlOperatorTable.SINGLE_VALUE);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.CONCAT_AGG, FlinkSqlOperatorTable.CONCAT_AGG);
+//		AGG_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.VARIANCE, FlinkSqlOperatorTable.VARIANCE);
 	}
 
 	static class AggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFunction> {
@@ -138,32 +138,40 @@ public class AggregateVisitors {
 				AggregateFunctionDefinition aggDef = (AggregateFunctionDefinition) def;
 				return typeFactory.createFieldTypeFromLogicalType(
 						fromTypeInfoToLogicalType(aggDef.getResultTypeInfo()));
-			} else if (BuiltInFunctionDefinitions.DISTINCT.equals(def) ||
-					InternalFunctionDefinitions.LEAD.equals(def) ||
-					InternalFunctionDefinitions.LAG.equals(def) ||
-					InternalFunctionDefinitions.SINGLE_VALUE.equals(def)) {
+			} else if (BuiltInFunctionDefinitions.DISTINCT.equals(def)
+//					||
+//					InternalFunctionDefinitions.LEAD.equals(def) ||
+//					InternalFunctionDefinitions.LAG.equals(def) ||
+//					InternalFunctionDefinitions.SINGLE_VALUE.equals(def)
+			) {
 				Expression child = call.getChildren().get(0);
 				return child.accept(this);
 			} else if (BuiltInFunctionDefinitions.AVG.equals(def) ||
 					BuiltInFunctionDefinitions.STDDEV_POP.equals(def) ||
 					BuiltInFunctionDefinitions.STDDEV_SAMP.equals(def) ||
-					InternalFunctionDefinitions.STDDEV.equals(def) ||
+//					InternalFunctionDefinitions.STDDEV.equals(def) ||
 					BuiltInFunctionDefinitions.VAR_POP.equals(def) ||
-					BuiltInFunctionDefinitions.VAR_SAMP.equals(def) ||
-					InternalFunctionDefinitions.VARIANCE.equals(def)) {
+					BuiltInFunctionDefinitions.VAR_SAMP.equals(def)
+//					||
+//					InternalFunctionDefinitions.VARIANCE.equals(def)
+			) {
 				RexNode inputRexNode = call.getChildren().get(0).accept(rexNodeConverter);
 				return typeFactory.getTypeSystem().deriveAvgAggType(typeFactory, inputRexNode.getType());
-			} else if (BuiltInFunctionDefinitions.COUNT.equals(def) ||
-					InternalFunctionDefinitions.DENSE_RANK.equals(def) ||
-					InternalFunctionDefinitions.RANK.equals(def) ||
-					InternalFunctionDefinitions.ROW_NUMBER.equals(def)) {
+			} else if (BuiltInFunctionDefinitions.COUNT.equals(def)
+//					||
+//					InternalFunctionDefinitions.DENSE_RANK.equals(def) ||
+//					InternalFunctionDefinitions.RANK.equals(def) ||
+//					InternalFunctionDefinitions.ROW_NUMBER.equals(def)
+			) {
 				return typeFactory.createSqlType(SqlTypeName.BIGINT);
-			} else if (InternalFunctionDefinitions.CONCAT_AGG.equals(def)) {
-				return typeFactory.createSqlType(SqlTypeName.VARCHAR);
+//			} else if (InternalFunctionDefinitions.CONCAT_AGG.equals(def)) {
+//				return typeFactory.createSqlType(SqlTypeName.VARCHAR);
 			} else if (BuiltInFunctionDefinitions.MAX.equals(def) ||
-					BuiltInFunctionDefinitions.MIN.equals(def) ||
-					InternalFunctionDefinitions.FIRST_VALUE.equals(def) ||
-					InternalFunctionDefinitions.LAST_VALUE.equals(def)) {
+					BuiltInFunctionDefinitions.MIN.equals(def)
+//					||
+//					InternalFunctionDefinitions.FIRST_VALUE.equals(def) ||
+//					InternalFunctionDefinitions.LAST_VALUE.equals(def)
+			) {
 				RexNode inputRexNode = call.getChildren().get(0).accept(rexNodeConverter);
 				return inputRexNode.getType();
 			} else if (BuiltInFunctionDefinitions.SUM0.equals(def)) {

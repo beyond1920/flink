@@ -18,8 +18,10 @@
 
 package org.apache.flink.table.calcite
 
+import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.calcite.FlinkRelFactories.{ExpandFactory, RankFactory, SinkFactory}
+import org.apache.flink.table.catalog.FunctionCatalog
 import org.apache.flink.table.expressions.WindowProperty
 import org.apache.flink.table.operations.QueryOperation
 import org.apache.flink.table.plan.QueryOperationConverter
@@ -139,8 +141,20 @@ object FlinkRelBuilder {
   case class NamedWindowProperty(name: String, property: WindowProperty)
 
   def proto(context: Context): RelBuilderFactory = new RelBuilderFactory() {
-    def create(cluster: RelOptCluster, schema: RelOptSchema): RelBuilder =
-      new FlinkRelBuilder(context, cluster, schema)
+    def create(cluster: RelOptCluster, schema: RelOptSchema): RelBuilder = {
+
+      val clusterContext = cluster.getPlanner.getContext.asInstanceOf[FlinkContext]
+
+      val mergedContext = new FlinkContext {
+
+        override def getTableConfig: TableConfig = clusterContext.getTableConfig
+
+        override def getFunctionCatalog: FunctionCatalog = clusterContext.getFunctionCatalog
+
+        override def unwrap[C](clazz: Class[C]): C = context.unwrap(clazz)
+      }
+      new FlinkRelBuilder(mergedContext, cluster, schema)
+    }
   }
 
   def of(cluster: RelOptCluster, relTable: RelOptTable): FlinkRelBuilder = {

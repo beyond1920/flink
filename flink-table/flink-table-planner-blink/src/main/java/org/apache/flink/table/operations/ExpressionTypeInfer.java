@@ -80,6 +80,7 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 	private static final CallTypeInference DATE_INFER = call -> DataTypes.DATE();
 	private static final CallTypeInference TIME_INFER = call -> DataTypes.TIME();
 	private static final CallTypeInference TIMESTAMP_INFER = call -> DataTypes.TIMESTAMP(3);
+	private static final CallTypeInference INTERVAL_MILLIS_INFER = call -> DataTypes.INTERVAL(DataTypes.SECOND(3));
 	private static final CallTypeInference BINARY_ARITHMETIC_INFER = call -> {
 		scala.Option<LogicalType> returnType = TypeCoercion.widerTypeOf(
 				fromDataTypeToLogicalType(infer(call.getChildren().get(0))),
@@ -203,7 +204,7 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.SHA512, STRING_INFER);
 		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.SHA1, STRING_INFER);
 
-		CALL_TYPE_INFERENCES.put(InternalFunctionDefinitions.THROW_EXCEPTION, FIRST_CHILD_INFER);
+//		CALL_TYPE_INFERENCES.put(InternalFunctionDefinitions.THROW_EXCEPTION, FIRST_CHILD_INFER);
 
 		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.CAST,
 				call -> ((TypeLiteralExpression) call.getChildren().get(1)).getOutputDataType());
@@ -311,6 +312,9 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 				call -> new AtomicDataType(new TimestampType(true, TimestampKind.PROCTIME, 3)));
 		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.CURRENT_ROW, BIGINT_INFER);
 		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.UNBOUNDED_ROW, BIGINT_INFER);
+		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.CURRENT_RANGE, INTERVAL_MILLIS_INFER);
+		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.UNBOUNDED_RANGE, INTERVAL_MILLIS_INFER);
+		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.DISTINCT, FIRST_CHILD_INFER);
 	}
 
 	private ExpressionTypeInfer() {}

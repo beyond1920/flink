@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.expressions;
 
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.calcite.FlinkPlannerImpl;
 import org.apache.flink.table.calcite.FlinkRelBuilder;
@@ -30,7 +30,6 @@ import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.AggregateFunctionDefinition;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
-import org.apache.flink.table.functions.InternalFunctionDefinitions;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.functions.ScalarFunctionDefinition;
 import org.apache.flink.table.functions.TableFunctionDefinition;
@@ -98,7 +97,6 @@ import java.util.stream.Collectors;
 
 import static org.apache.calcite.sql.type.SqlTypeName.VARCHAR;
 import static org.apache.flink.table.calcite.FlinkTypeFactory.toLogicalType;
-import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
 import static org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 import static org.apache.flink.table.typeutils.TypeCheckUtils.isCharacterString;
@@ -237,7 +235,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.SHA1, FlinkSqlOperatorTable.SHA1);
 
 		// etc
-		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.THROW_EXCEPTION, FlinkSqlOperatorTable.THROW_EXCEPTION);
+//		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(InternalFunctionDefinitions.THROW_EXCEPTION, FlinkSqlOperatorTable.THROW_EXCEPTION);
 
 	}
 
@@ -345,7 +343,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 				QueryOperation tableOperation = ((TableReferenceExpression) headExpr).getQueryOperation();
 				RexNode child = children.get(0).accept(this);
 				return RexSubQuery.in(
-						((FlinkRelBuilder)relBuilder).queryOperation(tableOperation).build(),
+						((FlinkRelBuilder) relBuilder).queryOperation(tableOperation).build(),
 						ImmutableList.of(child));
 			} else {
 				List<RexNode> child = convertCallChildren(children);
@@ -394,6 +392,8 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 			List<Expression> args = children;
 			Expression agg = args.get(0);
 			SqlAggFunction aggFunc = agg.accept(new AggregateVisitors.AggFunctionVisitor(typeFactory));
+//			RelDataType aggResultType = typeFactory.createFieldTypeFromLogicalType(
+//					fromDataTypeToLogicalType(ExpressionTypeInfer.infer(agg)));
 			RelDataType aggResultType = agg.accept(new AggregateVisitors.AggFunctionReturnTypeVisitor(typeFactory, this));
 
 			// assemble exprs by agg children
@@ -428,8 +428,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					isPhysical = BuiltInFunctionDefinitions.CURRENT_ROW.equals(precedingDef) ||
 							BuiltInFunctionDefinitions.UNBOUNDED_ROW.equals(precedingDef);
 				} else {
-					isPhysical = fromDataTypeToLegacyInfo(ExpressionTypeInfer.infer(preceding))
-							.equals(BasicTypeInfo.LONG_TYPE_INFO);
+					isPhysical = ExpressionTypeInfer.infer(preceding).equals(DataTypes.BIGINT());
 				}
 				Expression following = args.get(3);
 				lowerBound = createBound(preceding, SqlKind.PRECEDING);

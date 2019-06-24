@@ -21,7 +21,7 @@ package org.apache.flink.table.runtime.batch.table
 import org.apache.flink.table.api.Table
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.runtime.utils.SortTestUtils.{sortExpectedly, tupleDataSetStrings}
-import org.apache.flink.table.runtime.utils.{BatchTestBase, CollectionBatchExecTable, SortTestUtils}
+import org.apache.flink.table.runtime.utils.{BatchTestBase, CollectionBatchExecTable}
 import org.apache.flink.test.util.TestBaseUtils
 
 import org.junit._
@@ -61,8 +61,8 @@ class SortITCase extends BatchTestBase {
     compare(t, sortExpectedly(tupleDataSetStrings))
   }
 
-  @Test
   @Ignore //TODO something not support?
+  @Test
   def testOrderByOffset(): Unit = {
     val ds = CollectionBatchExecTable.get3TupleDataSet(tEnv)
     val t = ds.orderBy('_1.asc).offset(3)

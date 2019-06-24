@@ -361,7 +361,7 @@ class OverWindowITCase extends StreamingWithStateTestBase {
     val windowedTable = table
       .window(
         Over partitionBy 'c orderBy 'rowtime preceding 1.seconds following CURRENT_RANGE as 'w)
-      .select('c, 'b, 'a.count over 'w, 'a.sum over 'w, countDist('a) over 'w)
+      .select('c, 'b, 'a.count over 'w, 'a.sum over 'w, countDist('a) over 'w, '*.count over 'w)
 
     val result = windowedTable.toAppendStream[Row]
     result.addSink(new StreamITCase.StringSink[Row])

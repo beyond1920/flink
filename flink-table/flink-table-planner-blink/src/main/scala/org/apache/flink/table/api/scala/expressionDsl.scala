@@ -18,20 +18,20 @@
 
 package org.apache.flink.table.api.scala
 
-import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Integer => JInteger, Long => JLong, Short => JShort}
-import java.math.{BigDecimal => JBigDecimal}
-import java.sql.{Date, Time, Timestamp}
-import java.time.{LocalDate, LocalDateTime}
 import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
 import org.apache.flink.table.api.{DataTypes, Over, Table, ValidationException}
 import org.apache.flink.table.expressions.ApiExpressionUtils._
 import org.apache.flink.table.expressions._
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions.{RANGE_TO, WITH_COLUMNS, E => FDE, UUID => FDUUID, _}
-import org.apache.flink.table.functions.InternalFunctionDefinitions._
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{getAccumulatorTypeOfAggregateFunction, getResultTypeOfAggregateFunction}
 import org.apache.flink.table.functions.{AggregateFunction, AggregateFunctionDefinition, BuiltInFunctionDefinitions, FunctionDefinition, ScalarFunction, ScalarFunctionDefinition, TableAggregateFunction, TableAggregateFunctionDefinition, TableFunction, TableFunctionDefinition, UserDefinedAggregateFunction}
 import org.apache.flink.table.types.DataType
 import org.apache.flink.table.types.utils.TypeConversions.{fromDataTypeToLegacyInfo, fromLegacyInfoToDataType}
+
+import java.lang.{Boolean => JBoolean, Byte => JByte, Double => JDouble, Float => JFloat, Integer => JInteger, Long => JLong, Short => JShort}
+import java.math.{BigDecimal => JBigDecimal}
+import java.sql.{Date, Time, Timestamp}
+import java.time.{LocalDate, LocalDateTime}
 
 import _root_.scala.language.implicitConversions
 
@@ -219,6 +219,16 @@ trait ImplicitExpressionOperations {
     * If all values are null, 0 is returned.
     */
   def sum0: Expression = unresolvedCall(SUM0, expr)
+//
+//  /**
+//    * Returns the first value in a list of values that are input to the function.
+//    */
+//  def firstValue: Expression = unresolvedCall(FIRST_VALUE, expr)
+//
+//  /**
+//    * Returns the last value in a list of values that are input to the function.
+//    */
+//  def lastValue: Expression = unresolvedCall(LAST_VALUE, expr)
 
   /**
     * Returns the minimum value of field across all input values.
@@ -249,6 +259,11 @@ trait ImplicitExpressionOperations {
     * Returns the sample standard deviation of an expression (the square root of varSamp()).
     */
   def stddevSamp: Expression = unresolvedCall(STDDEV_SAMP, expr)
+//
+//  /**
+//    * Returns the sample standard deviation of an expression.
+//    */
+//  def stddev: Expression = unresolvedCall(STDDEV, expr)
 
   /**
     * Returns the population standard variance of an expression.
@@ -261,19 +276,29 @@ trait ImplicitExpressionOperations {
   def varSamp: Expression = unresolvedCall(VAR_SAMP, expr)
 
   /**
+    *  Returns the variance of a given expression.
+    */
+//  def variance: Expression = unresolvedCall(VARIANCE, expr)
+
+  /**
     * Returns multiset aggregate of a given expression.
     */
   def collect: Expression = unresolvedCall(COLLECT, expr)
-
-  /*
-   * Returns row_number aggregate of a given expression.
-   */
-  def rowNumber: Expression = unresolvedCall(ROW_NUMBER, expr)
-
-  /*
-   * Returns rank aggregate of a given expression.
-   */
-  def rank: Expression = unresolvedCall(RANK, expr)
+//
+//  /*
+//   * Returns row_number aggregate of a given expression.
+//   */
+//  def rowNumber: Expression = unresolvedCall(ROW_NUMBER, expr)
+//
+//  /*
+//   * Returns rank aggregate of a given expression.
+//   */
+//  def rank: Expression = unresolvedCall(RANK, expr)
+  /**
+    * Returns the a string that stitching all of the input values.
+    * If all values are null, null is returned.
+    */
+//  def concat_agg(separator: Expression): Expression = unresolvedCall(CONCAT_AGG, expr, separator)
 
   /**
     * Converts a value to a given data type.
@@ -1640,6 +1665,59 @@ object log {
     unresolvedCall(LOG, base, value)
   }
 }
+
+///*
+// * Calculates number the output of a result set. More specifically, returns the sequential number
+// * of a row within a partition of a result set, starting at 1 for the first row in each partition.
+// * ROW_NUMBER and RANK are similar. ROW_NUMBER numbers all rows sequentially
+// * (for example 1, 2, 3, 4, 5).
+// * RANK provides the same numeric value for ties (for example 1, 2, 2, 4, 5).
+// */
+//object RowNumber {
+//
+//  /**
+//    * Returns the sequential number of a row within a partition of a result set, starting at 1
+//    * for the first row in each partition.
+//    */
+//  def apply(): Expression = {
+//    unresolvedCall(ROW_NUMBER)
+//  }
+//
+//}
+//
+///**
+//  * Calculates the rank of each row within the partition of a result set.
+//  * The rank of a row is one plus the number of ranks that come before the row in question.
+//  */
+//object Rank {
+//
+//  /**
+//    * Returns the rank of each row within the partition of a result set.
+//    * The rank of a row is one plus the number of ranks that come before the row in question.
+//    */
+//  def apply(): Expression = {
+//    unresolvedCall(RANK)
+//  }
+//
+//}
+//
+///**
+//  * Calculates the rank of each row within a result set partition, with no gaps in the ranking
+//  * values. The rank of a specific row is one plus the number of distinct rank values that come
+//  * before that specific row.
+//  */
+//object DenseRank {
+//
+//  /**
+//    * Returns the rank of each row within a result set partition, with no gaps in the ranking
+//    * values. The rank of a specific row is one plus the number of distinct rank values that come
+//    * before that specific row.
+//    */
+//  def apply(): Expression = {
+//    unresolvedCall(DENSE_RANK)
+//  }
+//
+//}
 
 /**
   * Ternary conditional operator that decides which of two other expressions should be evaluated

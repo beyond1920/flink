@@ -200,6 +200,23 @@ public class JavaUserDefinedAggFunctions {
 	}
 
 	/**
+	 * A WeightedAvg class with retract method.
+	 */
+	public static class WeightedAvgWithRetract extends WeightedAvg {
+		//Overloaded retract method
+		public void retract(WeightedAvgAccum accumulator, long iValue, int iWeight) {
+			accumulator.sum -= iValue * iWeight;
+			accumulator.count -= iWeight;
+		}
+
+		//Overloaded retract method
+		public void retract(WeightedAvgAccum accumulator, int iValue, int iWeight) {
+			accumulator.sum -= iValue * iWeight;
+			accumulator.count -= iWeight;
+		}
+	}
+
+	/**
 	 * Accumulator of ConcatDistinctAgg.
 	 */
 	public static class ConcatAcc {

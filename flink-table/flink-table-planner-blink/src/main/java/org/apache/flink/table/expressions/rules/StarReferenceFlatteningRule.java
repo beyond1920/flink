@@ -20,7 +20,10 @@ package org.apache.flink.table.expressions.rules;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.expressions.Expression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.UnresolvedReferenceExpression;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.functions.FunctionDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +57,29 @@ final class StarReferenceFlatteningRule implements ResolverRule {
 				return new ArrayList<>(resolutionContext.referenceLookup().getAllInputFields());
 			} else {
 				return singletonList(unresolvedReference);
+			}
+		}
+
+		@Override
+		public List<Expression> visit(UnresolvedCallExpression unresolvedCall) {
+			FunctionDefinition def = unresolvedCall.getFunctionDefinition();
+			List<Expression> children = unresolvedCall.getChildren();
+			if (def.equals(BuiltInFunctionDefinitions.COUNT)) {
+				if (children.size() == 1 && children.get(0) instanceof UnresolvedReferenceExpression &&
+						((UnresolvedReferenceExpression) children.get(0)).getName().equals("*")) {
+					return singletonList(new UnresolvedCallExpression(def, new ArrayList<>()));
+				} else {
+					return singletonList(unresolvedCall);
+				}
+			} else {
+				List<Expression> newChildren = children.stream()
+						.flatMap(expr -> expr.accept(this).stream())
+						.collect(Collectors.toList());
+				if (newChildren.equals(children)) {
+					return singletonList(unresolvedCall);
+				} else {
+					return singletonList(new UnresolvedCallExpression(def, newChildren));
+				}
 			}
 		}
 

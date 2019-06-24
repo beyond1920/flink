@@ -1,0 +1,37 @@
+<?xml version="1.0" ?>
+<!--
+Licensed to the Apache Software Foundation (ASF) under one or more
+contributor license agreements.  See the NOTICE file distributed with
+this work for additional information regarding copyright ownership.
+The ASF licenses this file to you under the Apache License, Version 2.0
+(the "License"); you may not use this file except in compliance with
+the License.  You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<Root>
+  <TestCase name="testSimpleJoin">
+    <Resource name="planBefore">
+      <![CDATA[
+LogicalProject(rate=[AS(*($0, $4), _UTF-16LE'rate')])
++- LogicalFilter(condition=[=($3, $1)])
+   +- LogicalCorrelate(correlation=[$cor0], joinType=[inner], requiredColumns=[{}])
+      :- LogicalTableScan(table=[[default_catalog, default_database, Orders, source: [TestTableSource(o_amount, o_currency, o_rowtime)]]])
+      +- LogicalTableFunctionScan(invocation=[org$apache$flink$table$functions$TemporalTableFunctionImpl$8630f147a7208a1163887865e1ab1a18($2)], rowType=[RecordType(VARCHAR(2147483647) currency, INTEGER rate, TIMESTAMP(3) rowtime)], elementType=[class [Ljava.lang.Object;])
+]]>
+    </Resource>
+    <Resource name="planAfter">
+      <![CDATA[
+Calc(select=[*(o_amount, rate) AS rate], where=[=(currency, o_currency)])
++- Correlate(invocation=[org$apache$flink$table$functions$TemporalTableFunctionImpl$8630f147a7208a1163887865e1ab1a18($2)], correlate=[table(TemporalTableFunctionImpl(o_rowtime))], select=[o_amount,o_currency,o_rowtime,currency,rate,rowtime], rowType=[RecordType(BIGINT o_amount, VARCHAR(2147483647) o_currency, TIMESTAMP(3) o_rowtime, VARCHAR(2147483647) currency, INTEGER rate, TIMESTAMP(3) rowtime)], joinType=[INNER])
+   +- TableSourceScan(table=[[default_catalog, default_database, Orders, source: [TestTableSource(o_amount, o_currency, o_rowtime)]]], fields=[o_amount, o_currency, o_rowtime])
+]]>
+    </Resource>
+  </TestCase>
+</Root>

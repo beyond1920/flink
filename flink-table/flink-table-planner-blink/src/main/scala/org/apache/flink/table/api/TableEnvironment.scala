@@ -23,7 +23,6 @@ import org.apache.flink.annotation.VisibleForTesting
 import org.apache.flink.api.common.JobExecutionResult
 import org.apache.flink.api.common.typeinfo.TypeInformation
 import org.apache.flink.api.common.typeutils.CompositeType
-import org.apache.flink.api.java.typeutils._
 import org.apache.flink.streaming.api.environment.{StreamExecutionEnvironment => JavaStreamExecEnv}
 import org.apache.flink.streaming.api.graph.StreamGraph
 import org.apache.flink.streaming.api.scala.{StreamExecutionEnvironment => ScalaStreamExecEnv}
@@ -36,7 +35,7 @@ import org.apache.flink.table.dataformat.BaseRow
 import org.apache.flink.table.expressions.TableReferenceExpression
 import org.apache.flink.table.expressions.lookups.TableReferenceLookup
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{checkForInstantiation, checkNotSingleton, extractResultTypeFromTableFunction, getAccumulatorTypeOfAggregateFunction, getResultTypeOfAggregateFunction}
-import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
+import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction, UserFunctionsTypeHelper}
 import org.apache.flink.table.operations.{CatalogQueryOperation, OperationTreeBuilderImpl, PlannerQueryOperation}
 import org.apache.flink.table.plan.nodes.calcite.{LogicalSink, Sink}
 import org.apache.flink.table.plan.nodes.exec.ExecNode
@@ -49,8 +48,7 @@ import org.apache.flink.table.sinks.TableSink
 import org.apache.flink.table.sources.TableSource
 import org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType
 import org.apache.flink.table.types.logical.{LogicalType, RowType, TypeInformationAnyType}
-import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
-import org.apache.flink.table.types.{ClassLogicalTypeConverter, DataType, TypeInfoDataTypeConverter}
+import org.apache.flink.table.types.{ClassLogicalTypeConverter, DataType}
 import org.apache.flink.table.typeutils.TimeIndicatorTypeInfo
 import org.apache.flink.table.util.JavaScalaConversionUtil
 import org.apache.flink.types.Row
@@ -555,22 +553,22 @@ abstract class TableEnvironment(
     * @tparam T The type of the output row.
     */
   def registerFunction[T](name: String, tf: TableFunction[T]): Unit = {
-    implicit val typeInfo: TypeInformation[T] = extractResultTypeFromTableFunction(tf)
-    registerTableFunctionInternal(name, tf)
+    val typeInfo = UserFunctionsTypeHelper.getReturnTypeOfTableFunction(tf)
+    registerTableFunctionInternal(name, tf, typeInfo)
   }
 
   /**
     * Registers a [[TableFunction]] under a unique name. Replaces already existing
     * user-defined functions under this name.
     */
-  private[flink] def registerTableFunctionInternal[T: TypeInformation](
-      name: String, function: TableFunction[T]): Unit = {
+  private[flink] def registerTableFunctionInternal[T](
+      name: String, function: TableFunction[T], typeInfo: TypeInformation[T]): Unit = {
     // check if class not Scala object
     checkNotSingleton(function.getClass)
     // check if class could be instantiated
     checkForInstantiation(function.getClass)
 
-    functionCatalog.registerTableFunction(name, function, implicitly[TypeInformation[T]])
+    functionCatalog.registerTableFunction(name, function, typeInfo)
   }
 
   /**
@@ -585,44 +583,32 @@ abstract class TableEnvironment(
   def registerFunction[T, ACC](
       name: String,
       f: AggregateFunction[T, ACC]): Unit = {
-    implicit val typeInfo: TypeInformation[T] = TypeExtractor
-        .createTypeInfo(f, classOf[AggregateFunction[T, ACC]], f.getClass, 0)
-        .asInstanceOf[TypeInformation[T]]
+    val typeInfo = UserFunctionsTypeHelper.getReturnTypeOfAggregateFunction(f)
 
-    implicit val accTypeInfo: TypeInformation[ACC] = TypeExtractor
-        .createTypeInfo(f, classOf[AggregateFunction[T, ACC]], f.getClass, 1)
-        .asInstanceOf[TypeInformation[ACC]]
+    val accTypeInfo = UserFunctionsTypeHelper
+      .getAccumulatorTypeOfAggregateFunction(f)
 
-    registerAggregateFunctionInternal[T, ACC](name, f)
+    registerAggregateFunctionInternal(name, f, typeInfo, accTypeInfo)
   }
 
   /**
     * Registers an [[AggregateFunction]] under a unique name. Replaces already existing
     * user-defined functions under this name.
     */
-  private[flink] def registerAggregateFunctionInternal[T: TypeInformation, ACC: TypeInformation](
-      name: String, function: AggregateFunction[T, ACC]): Unit = {
+  private[flink] def registerAggregateFunctionInternal[T, ACC](
+      name: String,
+      function: AggregateFunction[T, ACC],
+      typeInfo: TypeInformation[T],
+      accTypeInfo: TypeInformation[ACC]): Unit = {
     // check if class not Scala object
     checkNotSingleton(function.getClass)
     // check if class could be instantiated
     checkForInstantiation(function.getClass)
 
-    val resultTypeInfo = TypeInfoDataTypeConverter.fromDataTypeToTypeInfo(
-      getResultTypeOfAggregateFunction(
-        function,
-        fromLegacyInfoToDataType(implicitly[TypeInformation[T]]))
-    ).asInstanceOf[TypeInformation[T]]
-
-    val accTypeInfo = TypeInfoDataTypeConverter.fromDataTypeToTypeInfo(
-      getAccumulatorTypeOfAggregateFunction(
-        function,
-        fromLegacyInfoToDataType(implicitly[TypeInformation[ACC]]))
-    ).asInstanceOf[TypeInformation[ACC]]
-
     functionCatalog.registerAggregateFunction(
       name,
       function,
-      resultTypeInfo,
+      typeInfo,
       accTypeInfo)
   }
 

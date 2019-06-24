@@ -24,9 +24,11 @@ import org.apache.flink.api.scala._
 import org.apache.flink.table.api.Types
 import org.apache.flink.table.api.scala._
 import org.apache.flink.table.functions.AggregateFunction
-import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions.{CountDistinctWithMergeAndReset, WeightedAvgWithMergeAndReset}
-import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase, CollectionBatchExecTable}
-import org.apache.flink.table.util.CountAggFunction
+import org.apache.flink.table.plan.util.JavaUserDefinedAggFunctions
+.{CountDistinctWithMergeAndReset, WeightedAvgWithMergeAndReset}
+import org.apache.flink.table.runtime.utils.{BatchScalaTableEnvUtil, BatchTestBase,
+  CollectionBatchExecTable}
+import org.apache.flink.table.util.{CountAggFunction, NonMergableCount}
 import org.apache.flink.test.util.TestBaseUtils
 
 import org.junit._
@@ -35,6 +37,7 @@ import java.lang.{Float => JFloat, Integer => JInt}
 import java.math.BigDecimal
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 class AggregationITCase extends BatchTestBase {
 
@@ -62,19 +65,18 @@ class AggregationITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
-//  @Test
-//  @Ignore // TODO agg should support
-//  def testWorkingAggregationDataTypes(): Unit = {
-//
-//    val t = BatchScalaTableEnvUtil.fromElements(tEnv, 
-//      (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, "Hello"),
-//      (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao"))
-//      .select('_1.avg, '_2.avg, '_3.avg, '_4.avg, '_5.avg, '_6.avg, '_7.count)
-//
-//    val expected = "1,1,1,1,1.5,1.5,2"
-//    val results = executeQuery(t)
-//    TestBaseUtils.compareResultAsText(results.asJava, expected)
-//  }
+  @Test
+  def testWorkingAggregationDataTypes(): Unit = {
+
+    val t = BatchScalaTableEnvUtil.fromElements(tEnv,
+      (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, "Hello"),
+      (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao"))
+      .select('_1.avg, '_2.avg, '_3.avg, '_4.avg, '_5.avg, '_6.avg, '_7.count)
+
+    val expected = "1,1,1,1,1.5,1.5,2"
+    val results = executeQuery(t)
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
 
   @Test
   def testProjection(): Unit = {
@@ -89,7 +91,6 @@ class AggregationITCase extends BatchTestBase {
   }
 
   @Test
-  @Ignore // TODO support it
   def testAggregationWithArithmetic(): Unit = {
     val t = BatchScalaTableEnvUtil.fromElements(tEnv, (1f, "Hello"), (2f, "Ciao"))
       .select(('_1 + 2).avg + 2, '_2.count + 5)
@@ -111,7 +112,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testAggregationAfterProjection(): Unit = {
-    val t = BatchScalaTableEnvUtil.fromElements(tEnv, 
+    val t = BatchScalaTableEnvUtil.fromElements(tEnv,
       (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, "Hello"),
       (2: Byte, 2: Short, 2, 2L, 2.0f, 2.0d, "Ciao"))
       .select('_1, '_2, '_3)
@@ -140,7 +141,7 @@ class AggregationITCase extends BatchTestBase {
 
   @Test
   def testPojoAggregation(): Unit = {
-    val input = BatchScalaTableEnvUtil.fromElements(tEnv, 
+    val input = BatchScalaTableEnvUtil.fromElements(tEnv,
       WC("hello", 1),
       WC("hello", 1),
       WC("ciao", 1),
@@ -148,10 +149,10 @@ class AggregationITCase extends BatchTestBase {
       WC("hola", 1))
     val expr = input
     val result = executeQuery(expr
-        .groupBy('word)
-        .select('word, 'frequency.sum as 'frequency)
-        .filter('frequency === 2)
-        .select('word, 'frequency * 10))
+      .groupBy('word)
+      .select('word, 'frequency.sum as 'frequency)
+      .filter('frequency === 2)
+      .select('word, 'frequency * 10))
 
     val mappedResult = result.map((row) => (row.getField(0), row.getField(1)))
     val expected = "(hello,20)\n" + "(hola,20)"
@@ -218,20 +219,46 @@ class AggregationITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
+
+  @Test
+  def testAggregateEmptyDataSets(): Unit = {
+    val myAgg = new NonMergableCount
+
+    val t1 = BatchScalaTableEnvUtil.fromCollection(
+      tEnv, new mutable.MutableList[(Int, String)], "a, b")
+      .select('a.sum, 'a.count)
+    val t2 = BatchScalaTableEnvUtil.fromCollection(
+      tEnv, new mutable.MutableList[(Int, String)], "a, b")
+      .select('a.sum, myAgg('b), 'a.count)
+
+    val expected1 = "null,0"
+    val expected2 = "null,0,0"
+
+    val results1 = executeQuery(t1)
+    val results2 = executeQuery(t2)
+
+    TestBaseUtils.compareResultAsText(results1.asJava, expected1)
+    TestBaseUtils.compareResultAsText(results2.asJava, expected2)
+
+  }
+
   @Test
   def testGroupedAggregateWithLongKeys(): Unit = {
-    val ds = BatchScalaTableEnvUtil.fromElements(tEnv, 
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2),
-      ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2))
-      .groupBy('_1, '_2)
-      .select('_3.sum)
+    val ds = BatchScalaTableEnvUtil.fromCollection(tEnv,
+      Seq(
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhaa", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2),
+        ("hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhab", 1, 2)),
+      "a,b,c"
+    )
+      .groupBy('a, 'b)
+      .select('c.sum)
 
     val expected = "10\n" + "8\n"
     val results = executeQuery(ds)
@@ -272,9 +299,9 @@ class AggregationITCase extends BatchTestBase {
       .select('c.min, 'e, 'a.avg, 'd.count)
 
     val expected = Seq(
-      s"0,1,${1.0/1},1", s"7,1,${9.0/2},2", s"2,1,${6.0/2},2",
-      s"3,2,${11.0/3},3", s"1,2,${10.0/3},3", s"14,2,${5.0/1},1",
-      s"12,3,${5.0/1},1", s"5,3,${8.0/2},2").mkString("\n")
+      s"0,1,${1.0 / 1},1", s"7,1,${9.0 / 2},2", s"2,1,${6.0 / 2},2",
+      s"3,2,${11.0 / 3},3", s"1,2,${10.0 / 3},3", s"14,2,${5.0 / 1},1",
+      s"12,3,${5.0 / 1},1", s"5,3,${8.0 / 2},2").mkString("\n")
     val results = executeQuery(t)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
@@ -292,7 +319,6 @@ class AggregationITCase extends BatchTestBase {
   }
 
   @Test
-  @Ignore // TODO support it
   def testAnalyticAggregation(): Unit = {
     val ds = BatchScalaTableEnvUtil.fromElements(tEnv,
       (1: Byte, 1: Short, 1, 1L, 1.0f, 1.0d, BigDecimal.ONE),
@@ -307,7 +333,7 @@ class AggregationITCase extends BatchTestBase {
       '_1.varSamp, '_2.varSamp, '_3.varSamp, '_4.varSamp, '_5.varSamp,
       '_6.varSamp, '_7.varSamp)
     val expected =
-        "0,0,0," +
+      "0,0,0," +
         "0,0.5,0.5,0.5," +
         "1,1,1," +
         "1,0.70710677,0.7071067811865476,0.7071067811865476," +
@@ -319,15 +345,34 @@ class AggregationITCase extends BatchTestBase {
     TestBaseUtils.compareResultAsText(results.asJava, expected)
   }
 
+  @Test
+  def testComplexAggregate(): Unit = {
+    val top10Fun = new Top10
+
+    val t = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+      .groupBy('b)
+      .select('b, top10Fun('b.cast(Types.INT), 'a.cast(Types.FLOAT)))
+
+    val expected =
+      "1,[1,1.0, null, null, null, null, null, null, null, null, null]\n" +
+        "2,[2,3.0, 2,2.0, null, null, null, null, null, null, null, null]\n" +
+        "3,[3,6.0, 3,5.0, 3,4.0, null, null, null, null, null, null, null]\n" +
+        "4,[4,10.0, 4,9.0, 4,8.0, 4,7.0, null, null, null, null, null, null]\n" +
+        "5,[5,15.0, 5,14.0, 5,13.0, 5,12.0, 5,11.0, null, null, null, null, null]\n" +
+        "6,[6,21.0, 6,20.0, 6,19.0, 6,18.0, 6,17.0, 6,16.0, null, null, null, null]"
+    val results = executeQuery(t)
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
   //TODO
 //  @Test
 //  def testStddevAndVariance(): Unit = {
 //    val t = BatchScalaTableEnvUtil.fromElements(
 //      tEnv, (1.0, 1), (1.0, 2), (2.0, 1), (2.0, 2), (3.0, 1), (3.0, 2))
-//        .select('_1.stddevPop, '_1.stddevSamp, '_1.stddev, '_1.varPop, '_1.varSamp, '_1.variance)
+//      .select('_1.stddevPop, '_1.stddevSamp, '_1.stddev, '_1.varPop, '_1.varSamp, '_1.variance)
 //
 //    val expected = s"${math.sqrt(4.0 / 6.0)},${math.sqrt(4.0 / 5.0)},${math.sqrt(4.0 / 5.0)}," +
-//        s"${2D / 3D},0.8,0.8"
+//      s"${2D / 3D},0.8,0.8"
 //    val results = executeQuery(t)
 //    TestBaseUtils.compareResultAsText(results.asJava, expected)
 //  }
@@ -335,8 +380,8 @@ class AggregationITCase extends BatchTestBase {
   @Test
   def testCollect(): Unit = {
     val t = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
-        .groupBy('b)
-        .select('b, 'a.collect)
+      .groupBy('b)
+      .select('b, 'a.collect)
 
     val expected =
       "1,{1=1}\n" +
@@ -414,7 +459,7 @@ class Top10 extends AggregateFunction[Array[JTuple2[JInt, JFloat]], Array[JTuple
       its: java.lang.Iterable[Array[JTuple2[JInt, JFloat]]]): Unit = {
 
     val it = its.iterator()
-    while(it.hasNext) {
+    while (it.hasNext) {
       val acc2 = it.next()
 
       var i = 0

@@ -18,9 +18,8 @@
 
 package org.apache.flink.table.functions;
 
-import org.apache.flink.table.types.inference.TypeStrategies;
-
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.types.inference.TypeStrategies;
 import org.apache.flink.util.Preconditions;
 
 import java.lang.reflect.Field;
@@ -42,23 +41,23 @@ public class InternalFunctionDefinitions {
 			.outputTypeStrategy(TypeStrategies.MISSING)
 			.build();
 
-	public static final BuiltInFunctionDefinition SINGLE_VALUE =
-			new BuiltInFunctionDefinition.Builder()
-					.name("SINGLE_VALUE")
-					.kind(AGGREGATE)
-					.build();
-
-	public static final BuiltInFunctionDefinition CONCAT_AGG =
-			new BuiltInFunctionDefinition.Builder()
-					.name("CONCAT_AGG")
-					.kind(AGGREGATE)
-					.build();
-
-	public static final BuiltInFunctionDefinition VARIANCE =
-			new BuiltInFunctionDefinition.Builder()
-					.name("VARIANCE")
-					.kind(AGGREGATE)
-					.build();
+//	public static final BuiltInFunctionDefinition SINGLE_VALUE =
+//			new BuiltInFunctionDefinition.Builder()
+//					.name("SINGLE_VALUE")
+//					.kind(AGGREGATE)
+//					.build();
+//
+//	public static final BuiltInFunctionDefinition CONCAT_AGG =
+//			new BuiltInFunctionDefinition.Builder()
+//					.name("CONCAT_AGG")
+//					.kind(AGGREGATE)
+//					.build();
+//
+//	public static final BuiltInFunctionDefinition VARIANCE =
+//			new BuiltInFunctionDefinition.Builder()
+//					.name("VARIANCE")
+//					.kind(AGGREGATE)
+//					.build();
 
 	public static List<BuiltInFunctionDefinition> getDefinitions() {
 		final Field[] fields = InternalFunctionDefinitions.class.getFields();

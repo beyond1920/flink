@@ -84,10 +84,6 @@ public class JoinOperationFactory {
 		if (correlated && right instanceof CalculatedQueryOperation && joinType != JoinType.INNER) {
 			throw new ValidationException(
 				"Predicate for lateral left outer join with table function can only be empty or literal true.");
-		} else if (!equiJoinExists) {
-			throw new ValidationException(String.format(
-				"Invalid join condition: %s. At least one equi-join predicate is required.",
-				condition));
 		}
 	}
 

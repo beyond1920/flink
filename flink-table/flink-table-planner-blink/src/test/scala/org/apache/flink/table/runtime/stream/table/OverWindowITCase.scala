@@ -114,7 +114,6 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
   }
 
-  @Ignore("Type cast error, need fix")
   @Test
   def testRowTimeUnBoundedPartitionedRangeOver(): Unit = {
     val data: Seq[Either[(Long, (Int, Long, String)), Long]] = Seq(
@@ -342,7 +341,6 @@ class OverWindowITCase(mode: StateBackendMode) extends StreamingWithStateTestBas
     assertEquals(expected.sorted, sink.getAppendResults.sorted)
   }
 
-  @Ignore("Error results, need look into further")
   @Test
   def testRowTimeBoundedPartitionedRangeOver(): Unit = {
     val data: Seq[Either[(Long, (Long, Int, String)), Long]] = Seq(

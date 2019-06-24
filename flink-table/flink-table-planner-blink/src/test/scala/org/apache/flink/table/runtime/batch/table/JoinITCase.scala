@@ -20,6 +20,7 @@ package org.apache.flink.table.runtime.batch.table
 
 import org.apache.flink.api.scala._
 import org.apache.flink.table.api.scala._
+import org.apache.flink.table.expressions.utils.FuncWithOpen
 import org.apache.flink.table.runtime.batch.sql.join.JoinITCaseHelper.disableOtherJoinOpForJoin
 import org.apache.flink.table.runtime.batch.sql.join.JoinType
 import org.apache.flink.table.runtime.batch.sql.join.JoinType.JoinType
@@ -46,6 +47,23 @@ class JoinITCase extends BatchTestBase {
     val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
 
     val joinT = ds1.join(ds2).where('b === 'e).select('c, 'g)
+
+    val expected = "Hi,Hallo\n" + "Hello,Hallo Welt\n" + "Hello world,Hallo Welt\n"
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
+  @Test
+  def testJoin1(): Unit = {
+    val ds1 = CollectionBatchExecTable.getSmall3TupleDataSet(tEnv, "a, b, c")
+    val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+
+    val testOpenCall = new FuncWithOpen
+
+    val joinT = ds1.join(ds2)
+      .where('b === 'e)
+      .where(testOpenCall('a + 'd))
+      .select('c, 'g)
 
     val expected = "Hi,Hallo\n" + "Hello,Hallo Welt\n" + "Hello world,Hallo Welt\n"
     val results = executeQuery(joinT)
@@ -195,6 +213,42 @@ class JoinITCase extends BatchTestBase {
   }
 
   @Test
+  def testLeftJoinWithNonEquiJoinPred(): Unit = {
+    val ds1 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+    val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+
+    val joinT = ds1.leftOuterJoin(ds2, 'a === 'd && 'b <= 'h).select('c, 'g)
+
+    val expected = Seq(
+      "Hi,Hallo", "Hello,Hallo Welt", "Hello world,Hallo Welt wie gehts?", "Hello world,ABC",
+      "Hello world,BCD", "I am fine.,HIJ", "I am fine.,IJK",
+      "Hello world, how are you?,null", "Luke Skywalker,null", "Comment#1,null", "Comment#2,null",
+      "Comment#3,null", "Comment#4,null", "Comment#5,null", "Comment#6,null", "Comment#7,null",
+      "Comment#8,null", "Comment#9,null", "Comment#10,null", "Comment#11,null", "Comment#12,null",
+      "Comment#13,null", "Comment#14,null", "Comment#15,null")
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected.mkString("\n"))
+  }
+
+  @Test
+  def testLeftJoinWithLeftLocalPred(): Unit = {
+    val ds1 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+    val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+
+    val joinT = ds1.leftOuterJoin(ds2, 'a === 'd && 'b === 2).select('c, 'g)
+
+    val expected = Seq(
+      "Hello,Hallo Welt", "Hello,Hallo Welt wie",
+      "Hello world,Hallo Welt wie gehts?", "Hello world,ABC", "Hello world,BCD",
+      "Hi,null", "Hello world, how are you?,null", "I am fine.,null", "Luke Skywalker,null",
+      "Comment#1,null", "Comment#2,null", "Comment#3,null", "Comment#4,null", "Comment#5,null",
+      "Comment#6,null", "Comment#7,null", "Comment#8,null", "Comment#9,null", "Comment#10,null",
+      "Comment#11,null", "Comment#12,null", "Comment#13,null", "Comment#14,null", "Comment#15,null")
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected.mkString("\n"))
+  }
+
+  @Test
   def testRightJoinWithMultipleKeys(): Unit = {
     val ds1 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
     val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
@@ -207,6 +261,42 @@ class JoinITCase extends BatchTestBase {
       "I am fine.,IJK\n" + "null,JKL\n" + "null,KLM\n"
     val results = executeQuery(joinT)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
+  @Test
+  def testRightJoinWithNonEquiJoinPred(): Unit = {
+    val ds1 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+    val ds2 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+
+    val joinT = ds1.rightOuterJoin(ds2, 'a === 'd && 'b <= 'h).select('c, 'g)
+
+    val expected = Seq(
+      "Hi,Hallo", "Hello,Hallo Welt", "Hello world,Hallo Welt wie gehts?", "Hello world,ABC",
+      "Hello world,BCD", "I am fine.,HIJ", "I am fine.,IJK",
+      "Hello world, how are you?,null", "Luke Skywalker,null", "Comment#1,null", "Comment#2,null",
+      "Comment#3,null", "Comment#4,null", "Comment#5,null", "Comment#6,null", "Comment#7,null",
+      "Comment#8,null", "Comment#9,null", "Comment#10,null", "Comment#11,null", "Comment#12,null",
+      "Comment#13,null", "Comment#14,null", "Comment#15,null")
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected.mkString("\n"))
+  }
+
+  @Test
+  def testRightJoinWithLeftLocalPred(): Unit = {
+    val ds1 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+    val ds2 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+
+    val joinT = ds1.rightOuterJoin(ds2, 'a === 'd && 'b === 2).select('c, 'g)
+
+    val expected = Seq(
+      "Hello,Hallo Welt", "Hello,Hallo Welt wie",
+      "Hello world,Hallo Welt wie gehts?", "Hello world,ABC", "Hello world,BCD",
+      "Hi,null", "Hello world, how are you?,null", "I am fine.,null", "Luke Skywalker,null",
+      "Comment#1,null", "Comment#2,null", "Comment#3,null", "Comment#4,null", "Comment#5,null",
+      "Comment#6,null", "Comment#7,null", "Comment#8,null", "Comment#9,null", "Comment#10,null",
+      "Comment#11,null", "Comment#12,null", "Comment#13,null", "Comment#14,null", "Comment#15,null")
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected.mkString("\n"))
   }
 
   @Test
@@ -227,6 +317,55 @@ class JoinITCase extends BatchTestBase {
       "Hello world, how are you?,null\n"
     val results = executeQuery(joinT)
     TestBaseUtils.compareResultAsText(results.asJava, expected)
+  }
+
+  @Test
+  def testFullJoinWithNonEquiJoinPred(): Unit = {
+    tEnv.getConfig.setNullCheck(true)
+
+    val ds1 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+    val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+
+    val joinT = ds1.fullOuterJoin(ds2, 'a === 'd && 'b <= 'h).select('c, 'g)
+
+    val expected = Seq(
+      // join matches
+      "Hi,Hallo", "Hello,Hallo Welt", "Hello world,Hallo Welt wie gehts?", "Hello world,ABC",
+      "Hello world,BCD", "I am fine.,HIJ", "I am fine.,IJK",
+      // preserved left
+      "Hello world, how are you?,null", "Luke Skywalker,null", "Comment#1,null", "Comment#2,null",
+      "Comment#3,null", "Comment#4,null", "Comment#5,null", "Comment#6,null", "Comment#7,null",
+      "Comment#8,null", "Comment#9,null", "Comment#10,null", "Comment#11,null", "Comment#12,null",
+      "Comment#13,null", "Comment#14,null", "Comment#15,null",
+      // preserved right
+      "null,Hallo Welt wie", "null,CDE", "null,DEF", "null,EFG", "null,FGH", "null,GHI", "null,JKL",
+      "null,KLM")
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected.mkString("\n"))
+  }
+
+  @Test
+  def testFullJoinWithLeftLocalPred(): Unit = {
+    val ds1 = CollectionBatchExecTable.get3TupleDataSet(tEnv, "a, b, c")
+    val ds2 = CollectionBatchExecTable.get5TupleDataSet(tEnv, "d, e, f, g, h")
+
+    val joinT = ds1.fullOuterJoin(ds2, 'a === 'd && 'b >= 2 && 'h === 1).select('c, 'g)
+
+    val expected = Seq(
+      // join matches
+      "Hello,Hallo Welt wie", "Hello world, how are you?,DEF", "Hello world, how are you?,EFG",
+      "I am fine.,GHI",
+      // preserved left
+      "Hi,null", "Hello world,null", "Luke Skywalker,null",
+      "Comment#1,null", "Comment#2,null", "Comment#3,null", "Comment#4,null", "Comment#5,null",
+      "Comment#6,null", "Comment#7,null", "Comment#8,null", "Comment#9,null", "Comment#10,null",
+      "Comment#11,null", "Comment#12,null", "Comment#13,null", "Comment#14,null", "Comment#15,null",
+      // preserved right
+      "null,Hallo", "null,Hallo Welt", "null,Hallo Welt wie gehts?", "null,ABC", "null,BCD",
+      "null,CDE", "null,FGH", "null,HIJ", "null,IJK", "null,JKL", "null,KLM")
+
+    val results = executeQuery(joinT)
+    TestBaseUtils.compareResultAsText(results.asJava, expected.mkString("\n"))
   }
 
   @Test

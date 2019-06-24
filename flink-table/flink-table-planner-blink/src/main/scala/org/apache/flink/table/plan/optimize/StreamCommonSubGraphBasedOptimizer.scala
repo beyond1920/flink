@@ -150,7 +150,6 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
       override def needFinalTimeIndicatorConversion: Boolean = true
 
       override def updateAsRetraction: Boolean = updatesAsRetraction
-
     })
   }
 
