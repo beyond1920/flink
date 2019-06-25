@@ -26,7 +26,7 @@ import org.apache.flink.configuration.Configuration
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.api.java.StreamTableEnvironment
 import org.apache.flink.table.api.scala._
-import org.apache.flink.table.api.{TableConfig, TableImpl}
+import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.codegen.{CodeGeneratorContext, ExprCodeGenerator, FunctionCodeGenerator}
 import org.apache.flink.table.dataformat.{BaseRow, BinaryRow, DataFormatConverters}
 import org.apache.flink.table.expressions.{Expression, ExpressionParser}
@@ -35,6 +35,7 @@ import org.apache.flink.table.types.DataType
 import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
 import org.apache.flink.table.types.logical.{RowType, VarCharType}
 import org.apache.flink.table.types.utils.TypeConversions
+import org.apache.flink.table.util.TableTestUtil
 import org.apache.flink.types.Row
 
 import org.apache.calcite.plan.hep.{HepPlanner, HepProgramBuilder}
@@ -229,12 +230,10 @@ abstract class ExpressionTestBase {
 
   private def addTableApiTestExpr(tableApiExpr: Expression, expected: String): Unit = {
     // create RelNode from Table API expression
-    val converted = tEnv
+    val table = tEnv
         .scan(tableName)
         .select(tableApiExpr)
-        .asInstanceOf[TableImpl]
-        .getRelNode
-
+    val converted = TableTestUtil.toRelNode(table)
     addTestExpr(converted, expected)
   }
 

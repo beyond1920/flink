@@ -39,6 +39,11 @@ public class RexPlannerExpression implements Expression {
 	}
 
 	@Override
+	public String asSummaryString() {
+		return rexNode.toString();
+	}
+
+	@Override
 	public List<Expression> getChildren() {
 		return Collections.emptyList();
 	}

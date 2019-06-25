@@ -18,21 +18,30 @@
 
 package org.apache.flink.table.calcite
 
+import org.apache.flink.table.calcite.FlinkRelBuilder.NamedWindowProperty
 import org.apache.flink.table.calcite.FlinkRelFactories.{ExpandFactory, RankFactory, SinkFactory}
 import org.apache.flink.table.expressions.WindowProperty
 import org.apache.flink.table.operations.QueryOperation
 import org.apache.flink.table.plan.QueryOperationConverter
+import org.apache.flink.table.plan.logical.LogicalWindow
+import org.apache.flink.table.plan.nodes.calcite.LogicalWindowAggregate
 import org.apache.flink.table.runtime.rank.{RankRange, RankType}
 import org.apache.flink.table.sinks.TableSink
 
 import org.apache.calcite.plan._
 import org.apache.calcite.rel.RelCollation
 import org.apache.calcite.rel.`type`.{RelDataType, RelDataTypeField}
+import org.apache.calcite.rel.logical.LogicalAggregate
 import org.apache.calcite.rex.RexNode
+import org.apache.calcite.tools.RelBuilder.{AggCall, GroupKey}
 import org.apache.calcite.tools.{RelBuilder, RelBuilderFactory}
 import org.apache.calcite.util.{ImmutableBitSet, Util}
 
+import java.lang.Iterable
 import java.util
+import java.util.List
+
+import scala.collection.JavaConversions._
 
 /**
   * Flink specific [[RelBuilder]] that changes the default type factory to a [[FlinkTypeFactory]].
@@ -48,7 +57,10 @@ class FlinkRelBuilder(
 
   require(context != null)
 
-  private val toRelNodeConverter = new QueryOperationConverter(this)
+  private val toRelNodeConverter = {
+    val functionCatalog = context.asInstanceOf[FlinkContext].getFunctionCatalog
+    new QueryOperationConverter(this, functionCatalog)
+  }
 
   private val expandFactory: ExpandFactory = {
     Util.first(context.unwrap(classOf[ExpandFactory]), FlinkRelFactories.DEFAULT_EXPAND_FACTORY)
@@ -97,12 +109,6 @@ class FlinkRelBuilder(
     push(rank)
   }
 
-  def queryOperation(queryOperation: QueryOperation): RelBuilder= {
-    val relNode = queryOperation.accept(toRelNodeConverter)
-    push(relNode)
-    this
-  }
-
   def aggregate(
       window: LogicalWindow,
       groupKey: GroupKey,
@@ -113,6 +119,12 @@ class FlinkRelBuilder(
 
     // build logical window aggregate from it
     push(LogicalWindowAggregate.create(window, namedProperties, aggregate))
+    this
+  }
+
+  def queryOperation(queryOperation: QueryOperation): RelBuilder = {
+    val relNode = queryOperation.accept(toRelNodeConverter)
+    push(relNode)
     this
   }
 }

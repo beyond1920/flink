@@ -25,7 +25,7 @@ import org.apache.flink.api.java.typeutils._
 import org.apache.flink.table.api.{TableEnvironment, TableException, ValidationException}
 import org.apache.flink.table.calcite.FlinkTypeFactory
 import org.apache.flink.table.dataformat.{BaseRow, BinaryString, Decimal}
-import org.apache.flink.table.functions._
+import org.apache.flink.table.functions.{AggregateFunction, FunctionRequirement, ScalarFunction, TableFunction, UserDefinedAggregateFunction, UserDefinedFunction}
 import org.apache.flink.table.plan.schema.DeferredTypeFlinkTableFunction
 import org.apache.flink.table.types.ClassDataTypeConverter.fromClassToDataType
 import org.apache.flink.table.types.ClassLogicalTypeConverter.{getDefaultExternalClassForType, getInternalClassForType}
@@ -51,7 +51,6 @@ import java.sql.{Date, Time, Timestamp}
 import scala.collection.JavaConversions._
 import scala.collection.mutable
 import scala.language.postfixOps
-
 
 object UserDefinedFunctionUtils {
 
@@ -523,7 +522,7 @@ object UserDefinedFunctionUtils {
     * @return The inferred result type of the AggregateFunction.
     */
   def getResultTypeOfAggregateFunction(
-      aggregateFunction: AggregateFunction[_, _],
+      aggregateFunction: UserDefinedAggregateFunction[_, _],
       extractedType: DataType = null): DataType = {
 
     val resultType = aggregateFunction.getResultType
@@ -554,7 +553,7 @@ object UserDefinedFunctionUtils {
     * @return The inferred accumulator type of the AggregateFunction.
     */
   def getAccumulatorTypeOfAggregateFunction(
-      aggregateFunction: AggregateFunction[_, _],
+      aggregateFunction: UserDefinedAggregateFunction[_, _],
       extractedType: DataType = null): DataType = {
 
     val accType = aggregateFunction.getAccumulatorType
@@ -587,7 +586,7 @@ object UserDefinedFunctionUtils {
     */
   @throws(classOf[InvalidTypesException])
   private def extractTypeFromAggregateFunction(
-      aggregateFunction: AggregateFunction[_, _],
+      aggregateFunction: UserDefinedAggregateFunction[_, _],
       parameterTypePos: Int): DataType = {
 
     fromLegacyInfoToDataType(TypeExtractor.createTypeInfo(

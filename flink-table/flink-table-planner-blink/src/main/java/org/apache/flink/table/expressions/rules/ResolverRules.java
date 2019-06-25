@@ -38,6 +38,11 @@ public final class ResolverRules {
 	public static final ResolverRule FIELD_RESOLVE = new ReferenceResolverRule();
 
 	/**
+	 * Resolves call based on argument types. See {@link ResolveCallByArgumentsRule} for details.
+	 */
+	public static final ResolverRule RESOLVE_CALL_BY_ARGUMENTS = new ResolveCallByArgumentsRule();
+
+	/**
 	 * Looks up unresolved call by name. See {@link LookupCallByNameRule} for details.
 	 */
 	public static final ResolverRule LOOKUP_CALL_BY_NAME = new LookupCallByNameRule();
@@ -57,11 +62,11 @@ public final class ResolverRules {
 	 */
 	public static final ResolverRule EXPAND_COLUMN_FUNCTIONS = new ExpandColumnFunctionsRule();
 
+
 	/**
-	 * Checks that the output of {@link org.apache.flink.table.expressions.ExpressionResolver} has no more unresolved
-	 * expressions. See {@link VerifyNoUnresolvedExpressionsRule} for details.
+	 * Looks up unresolved calls of built-in functions to make them fully qualified.
 	 */
-	public static final ResolverRule VERIFY_NO_MORE_UNRESOLVED_EXPRESSIONS = new VerifyNoUnresolvedExpressionsRule();
+	public static final ResolverRule QUALIFY_BUILT_IN_FUNCTIONS = new QualifyBuiltInFunctionsRule();
 
 	private ResolverRules() {
 	}

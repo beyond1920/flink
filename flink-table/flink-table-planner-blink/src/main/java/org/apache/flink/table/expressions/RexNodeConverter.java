@@ -18,15 +18,27 @@
 
 package org.apache.flink.table.expressions;
 
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.calcite.FlinkPlannerImpl;
+import org.apache.flink.table.calcite.FlinkRelBuilder;
 import org.apache.flink.table.calcite.FlinkTypeFactory;
 import org.apache.flink.table.calcite.RexAggLocalVariable;
 import org.apache.flink.table.calcite.RexDistinctKeyVariable;
 import org.apache.flink.table.dataformat.Decimal;
+import org.apache.flink.table.functions.AggregateFunction;
+import org.apache.flink.table.functions.AggregateFunctionDefinition;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
 import org.apache.flink.table.functions.InternalFunctionDefinitions;
+import org.apache.flink.table.functions.ScalarFunction;
+import org.apache.flink.table.functions.ScalarFunctionDefinition;
+import org.apache.flink.table.functions.TableFunctionDefinition;
+import org.apache.flink.table.functions.UserDefinedAggregateFunction;
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable;
+import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils;
+import org.apache.flink.table.operations.ExpressionTypeInfer;
+import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.types.logical.ArrayType;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.DateType;
@@ -47,16 +59,25 @@ import org.apache.calcite.avatica.util.TimeUnitRange;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexFieldCollation;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexWindowBound;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlFunction;
 import org.apache.calcite.sql.SqlIntervalQualifier;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.SqlPostfixOperator;
 import org.apache.calcite.sql.SqlWindow;
 import org.apache.calcite.sql.fun.SqlTrimFunction;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.type.OrdinalReturnTypeInference;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.DateString;
@@ -64,17 +85,22 @@ import org.apache.calcite.util.TimeString;
 import org.apache.calcite.util.TimestampString;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.apache.calcite.sql.type.SqlTypeName.VARCHAR;
 import static org.apache.flink.table.calcite.FlinkTypeFactory.toLogicalType;
+import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
 import static org.apache.flink.table.types.LogicalTypeDataTypeConverter.fromDataTypeToLogicalType;
+import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 import static org.apache.flink.table.typeutils.TypeCheckUtils.isCharacterString;
 import static org.apache.flink.table.typeutils.TypeCheckUtils.isTemporal;
 import static org.apache.flink.table.typeutils.TypeCheckUtils.isTimeInterval;
@@ -132,7 +158,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.UPPER, FlinkSqlOperatorTable.UPPER);
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.POSITION, FlinkSqlOperatorTable.POSITION);
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.OVERLAY, FlinkSqlOperatorTable.OVERLAY);
-		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.CONCAT, FlinkSqlOperatorTable.CONCAT);
+		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.CONCAT, FlinkSqlOperatorTable.CONCAT_FUNCTION);
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.CONCAT_WS, FlinkSqlOperatorTable.CONCAT_WS);
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.LPAD, FlinkSqlOperatorTable.LPAD);
 		SIMPLE_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.RPAD, FlinkSqlOperatorTable.RPAD);
@@ -221,19 +247,10 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 	}
 
 	public RexNode visit(UnresolvedCallExpression call) {
-		switch (call.getFunctionDefinition().getKind()) {
-			case SCALAR:
-				return translateScalarCall(call.getFunctionDefinition(), call.getChildren());
-			default: throw new UnsupportedOperationException();
-		}
-	}
-
-	@Override
-	public RexNode visitCall(CallExpression call) {
 		FunctionDefinition func = call.getFunctionDefinition();
 		if (func instanceof ScalarFunctionDefinition) {
 			ScalarFunction scalaFunc = ((ScalarFunctionDefinition) func).getScalarFunction();
-			List<RexNode> child = convertCallChildren(call);
+			List<RexNode> child = convertCallChildren(call.getChildren());
 			SqlFunction sqlFunction = UserDefinedFunctionUtils.createScalarSqlFunction(
 					scalaFunc.functionIdentifier(),
 					scalaFunc.toString(),
@@ -241,7 +258,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					typeFactory);
 			return relBuilder.call(sqlFunction, child);
 		} else if (func instanceof TableFunctionDefinition) {
-			throw new UnsupportedOperationException(func.getName());
+			throw new UnsupportedOperationException(func.toString());
 		} else if (func instanceof AggregateFunctionDefinition) {
 			UserDefinedAggregateFunction aggFunc = ((AggregateFunctionDefinition) func).getAggregateFunction();
 			if (aggFunc instanceof AggregateFunction) {
@@ -252,14 +269,49 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 						fromLegacyInfoToDataType(aggFunc.getResultType()),
 						fromLegacyInfoToDataType(aggFunc.getAccumulatorType()),
 						typeFactory);
-				List<RexNode> child = convertCallChildren(call);
+				List<RexNode> child = convertCallChildren(call.getChildren());
 				return relBuilder.call(aggSqlFunction, child);
 			} else {
-				throw new UnsupportedOperationException(func.getName());
+				throw new UnsupportedOperationException("TableAggregateFunction is not supported yet!");
 			}
 
 		} else {
-			return visitBuiltInFunc(call);
+			return visitBuiltInFunc(call.getFunctionDefinition(), call.getChildren());
+		}
+	}
+
+	@Override
+	public RexNode visit(CallExpression call) {
+		FunctionDefinition func = call.getFunctionDefinition();
+		if (func instanceof ScalarFunctionDefinition) {
+			ScalarFunction scalaFunc = ((ScalarFunctionDefinition) func).getScalarFunction();
+			List<RexNode> child = convertCallChildren(call.getChildren());
+			SqlFunction sqlFunction = UserDefinedFunctionUtils.createScalarSqlFunction(
+					scalaFunc.functionIdentifier(),
+					scalaFunc.toString(),
+					scalaFunc,
+					typeFactory);
+			return relBuilder.call(sqlFunction, child);
+		} else if (func instanceof TableFunctionDefinition) {
+			throw new UnsupportedOperationException(func.toString());
+		} else if (func instanceof AggregateFunctionDefinition) {
+			UserDefinedAggregateFunction aggFunc = ((AggregateFunctionDefinition) func).getAggregateFunction();
+			if (aggFunc instanceof AggregateFunction) {
+				SqlFunction aggSqlFunction = UserDefinedFunctionUtils.createAggregateSqlFunction(
+						aggFunc.functionIdentifier(),
+						aggFunc.toString(),
+						(AggregateFunction) aggFunc,
+						fromLegacyInfoToDataType(aggFunc.getResultType()),
+						fromLegacyInfoToDataType(aggFunc.getAccumulatorType()),
+						typeFactory);
+				List<RexNode> child = convertCallChildren(call.getChildren());
+				return relBuilder.call(aggSqlFunction, child);
+			} else {
+				throw new UnsupportedOperationException("TableAggregateFunction is not supported yet!");
+			}
+
+		} else {
+			return visitBuiltInFunc(call.getFunctionDefinition(), call.getChildren());
 		}
 	}
 
@@ -269,47 +321,55 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 				.collect(Collectors.toList());
 	}
 
-	private RexNode visitBuiltInFunc(CallExpression call) {
-		FunctionDefinition def = call.getFunctionDefinition();
+	private RexNode visitBuiltInFunc(FunctionDefinition def, List<Expression> children) {
 
 		if (BuiltInFunctionDefinitions.CAST.equals(def)) {
-			RexNode child = call.getChildren().get(0).accept(this);
-			TypeLiteralExpression type = (TypeLiteralExpression) call.getChildren().get(1);
+			RexNode child = children.get(0).accept(this);
+			TypeLiteralExpression type = (TypeLiteralExpression) children.get(1);
 			return relBuilder.getRexBuilder().makeAbstractCast(
 					typeFactory.createFieldTypeFromLogicalType(
 							type.getOutputDataType().getLogicalType().copy(child.getType().isNullable())),
 					child);
 		} else if (BuiltInFunctionDefinitions.REINTERPRET_CAST.equals(def)) {
-			RexNode child = call.getChildren().get(0).accept(this);
-			TypeLiteralExpression type = (TypeLiteralExpression) call.getChildren().get(1);
-			RexNode checkOverflow = call.getChildren().get(2).accept(this);
+			RexNode child = children.get(0).accept(this);
+			TypeLiteralExpression type = (TypeLiteralExpression) children.get(1);
+			RexNode checkOverflow = children.get(2).accept(this);
 			return relBuilder.getRexBuilder().makeReinterpretCast(
 					typeFactory.createFieldTypeFromLogicalType(
 							type.getOutputDataType().getLogicalType().copy(child.getType().isNullable())),
 					child,
 					checkOverflow);
 		} else if (BuiltInFunctionDefinitions.IN.equals(def)) {
-			Expression headExpr = call.getChildren().get(0);
+			Expression headExpr = children.get(1);
 			if (headExpr instanceof TableReferenceExpression) {
-				// TODO convert TableReferenceExpression to RelNode
-				throw new UnsupportedOperationException(def.getName());
+				QueryOperation tableOperation = ((TableReferenceExpression) headExpr).getQueryOperation();
+				RexNode child = children.get(0).accept(this);
+				return RexSubQuery.in(
+						((FlinkRelBuilder)relBuilder).queryOperation(tableOperation).build(),
+						ImmutableList.of(child));
 			} else {
-				List<RexNode> child = convertCallChildren(call);
+				List<RexNode> child = convertCallChildren(children);
 				return relBuilder.call(FlinkSqlOperatorTable.IN, child);
 			}
 		} else if (BuiltInFunctionDefinitions.GET.equals(def)) {
-			RexNode child = call.getChildren().get(0).accept(this);
-			ValueLiteralExpression keyLiteral = (ValueLiteralExpression) call.getChildren().get(1);
-			int index = ExpressionUtils.extractValue(keyLiteral, String.class).map(
-					child.getType().getFieldNames()::indexOf).orElse(extractValue(keyLiteral, Integer.class));
+			RexNode child = children.get(0).accept(this);
+			ValueLiteralExpression keyLiteral = (ValueLiteralExpression) children.get(1);
+			int index;
+			Optional<Integer> indexOptional = ExpressionUtils.extractValue(keyLiteral, String.class).map(
+					child.getType().getFieldNames()::indexOf);
+			if (indexOptional.isPresent()) {
+				index = indexOptional.get();
+			} else {
+				index = extractValue(keyLiteral, Integer.class);
+			}
 			return relBuilder.getRexBuilder().makeFieldAccess(child, index);
 		} else if (BuiltInFunctionDefinitions.TRIM.equals(def)) {
-			ValueLiteralExpression removeLeadingExpr = (ValueLiteralExpression) call.getChildren().get(0);
+			ValueLiteralExpression removeLeadingExpr = (ValueLiteralExpression) children.get(0);
 			Boolean removeLeading = extractValue(removeLeadingExpr, Boolean.class);
-			ValueLiteralExpression removeTrailingExpr = (ValueLiteralExpression) call.getChildren().get(1);
+			ValueLiteralExpression removeTrailingExpr = (ValueLiteralExpression) children.get(1);
 			Boolean removeTrailing = extractValue(removeTrailingExpr, Boolean.class);
-			RexNode trimString = call.getChildren().get(2).accept(this);
-			RexNode str = call.getChildren().get(3).accept(this);
+			RexNode trimString = children.get(2).accept(this);
+			RexNode str = children.get(3).accept(this);
 			Enum trimMode;
 			if (removeLeading && removeTrailing) {
 				trimMode = SqlTrimFunction.Flag.BOTH;
@@ -326,12 +386,12 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					trimString,
 					str);
 		} else if (BuiltInFunctionDefinitions.AS.equals(def)) {
-			String name = extractValue((ValueLiteralExpression) call.getChildren().get(1), String.class);
-			RexNode child = call.getChildren().get(0).accept(this);
+			String name = extractValue((ValueLiteralExpression) children.get(1), String.class);
+			RexNode child = children.get(0).accept(this);
 			return relBuilder.alias(child, name);
 		}
 		else if (BuiltInFunctionDefinitions.OVER.equals(def)) {
-			List<Expression> args = call.getChildren();
+			List<Expression> args = children;
 			Expression agg = args.get(0);
 			SqlAggFunction aggFunc = agg.accept(new AggregateVisitors.AggFunctionVisitor(typeFactory));
 			RelDataType aggResultType = agg.accept(new AggregateVisitors.AggFunctionReturnTypeVisitor(typeFactory, this));
@@ -368,7 +428,8 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					isPhysical = BuiltInFunctionDefinitions.CURRENT_ROW.equals(precedingDef) ||
 							BuiltInFunctionDefinitions.UNBOUNDED_ROW.equals(precedingDef);
 				} else {
-					isPhysical = ExpressionUtils.extractValue(preceding, Long.class).isPresent();
+					isPhysical = fromDataTypeToLegacyInfo(ExpressionTypeInfer.infer(preceding))
+							.equals(BasicTypeInfo.LONG_TYPE_INFO);
 				}
 				Expression following = args.get(3);
 				lowerBound = createBound(preceding, SqlKind.PRECEDING);
@@ -389,7 +450,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					false);
 		}
 
-		List<RexNode> child = convertCallChildren(call);
+		List<RexNode> child = convertCallChildren(children);
 		if (BuiltInFunctionDefinitions.IF.equals(def)) {
 			return relBuilder.call(FlinkSqlOperatorTable.CASE, child);
 		} else if (BuiltInFunctionDefinitions.IS_NULL.equals(def)) {
@@ -417,12 +478,12 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 				return relBuilder.call(FlinkSqlOperatorTable.REPLACE, child);
 			}
 		} else if (BuiltInFunctionDefinitions.PLUS.equals(def)) {
-			if (isVarchar(toLogicalType(child.get(0).getType()))) {
+			if (isCharacterString(toLogicalType(child.get(0).getType()))) {
 				return relBuilder.call(
 						FlinkSqlOperatorTable.CONCAT,
 						child.get(0),
 						relBuilder.cast(child.get(1), VARCHAR));
-			} else if (isVarchar(toLogicalType(child.get(1).getType()))) {
+			} else if (isCharacterString(toLogicalType(child.get(1).getType()))) {
 				return relBuilder.call(
 						FlinkSqlOperatorTable.CONCAT,
 						relBuilder.cast(child.get(0), VARCHAR),
@@ -434,7 +495,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 					&& isTemporal(toLogicalType(child.get(1).getType()))) {
 				// Calcite has a bug that can't apply INTERVAL + DATETIME (INTERVAL at left)
 				// we manually switch them here
-				return relBuilder.call(FlinkSqlOperatorTable.DATETIME_PLUS, child);
+				return relBuilder.call(FlinkSqlOperatorTable.DATETIME_PLUS, child.get(1), child.get(0));
 			} else if (isTemporal(toLogicalType(child.get(0).getType())) &&
 					isTemporal(toLogicalType(child.get(1).getType()))) {
 				return relBuilder.call(FlinkSqlOperatorTable.DATETIME_PLUS, child);
@@ -510,7 +571,7 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 		} else if (BuiltInFunctionDefinitions.ORDER_ASC.equals(def)) {
 			return child.get(0);
 		} else {
-			throw new UnsupportedOperationException(def.getName());
+			throw new UnsupportedOperationException(def.toString());
 		}
 	}
 
@@ -568,7 +629,42 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 		} else {
 			Object object = extractValue(valueLiteral, Object.class);
 			if (object instanceof TimePointUnit) {
-				throw new UnsupportedOperationException();
+				TimeUnit value;
+				switch ((TimePointUnit) object) {
+					case YEAR:
+						value = TimeUnit.YEAR;
+						break;
+					case MONTH:
+						value = TimeUnit.MONTH;
+						break;
+					case DAY:
+						value = TimeUnit.DAY;
+						break;
+					case HOUR:
+						value = TimeUnit.HOUR;
+						break;
+					case MINUTE:
+						value = TimeUnit.MINUTE;
+						break;
+					case SECOND:
+						value = TimeUnit.SECOND;
+						break;
+					case QUARTER:
+						value = TimeUnit.QUARTER;
+						break;
+					case WEEK:
+						value = TimeUnit.WEEK;
+						break;
+					case MILLISECOND:
+						value = TimeUnit.MILLISECOND;
+						break;
+					case MICROSECOND:
+						value = TimeUnit.MICROSECOND;
+						break;
+					default:
+						throw new UnsupportedOperationException();
+				}
+				return relBuilder.getRexBuilder().makeFlag(value);
 			} else if (object instanceof TimeIntervalUnit) {
 				TimeUnitRange value;
 				switch ((TimeIntervalUnit) object) {
@@ -667,12 +763,12 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 	}
 
 	@Override
-	public RexNode visitFieldReference(FieldReferenceExpression fieldReference) {
+	public RexNode visit(FieldReferenceExpression fieldReference) {
 		return relBuilder.field(fieldReference.getName());
 	}
 
 	@Override
-	public RexNode visitTypeLiteral(TypeLiteralExpression typeLiteral) {
+	public RexNode visit(TypeLiteralExpression typeLiteral) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -688,6 +784,8 @@ public class RexNodeConverter implements ExpressionVisitor<RexNode> {
 			return visitResolvedDistinctKeyReference((ResolvedDistinctKeyReference) other);
 		} else if (other instanceof UnresolvedCallExpression) {
 			return visit((UnresolvedCallExpression) other);
+		} else if (other instanceof RexPlannerExpression) {
+			return ((RexPlannerExpression) other).getRexNode();
 		} else {
 			throw new UnsupportedOperationException(other.getClass().getSimpleName() + ":" + other.toString());
 		}

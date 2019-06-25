@@ -21,19 +21,19 @@ package org.apache.flink.table.expressions.rules;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeutils.CompositeType;
-import org.apache.flink.table.expressions.BuiltInFunctionDefinitions;
-import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.operations.ExpressionTypeInfer;
 
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static java.util.Arrays.asList;
 import static java.util.Collections.singletonList;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
-import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.GET;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.GET;
 import static org.apache.flink.table.types.utils.TypeConversions.fromDataTypeToLegacyInfo;
 
 /**
@@ -57,16 +57,16 @@ final class FlattenCallRule implements ResolverRule {
 		}
 
 		@Override
-		public List<Expression> visitCall(CallExpression call) {
-			if (call.getFunctionDefinition() == BuiltInFunctionDefinitions.FLATTEN) {
-				return executeFlatten(call);
+		public List<Expression> visit(UnresolvedCallExpression unresolvedCall) {
+			if (unresolvedCall.getFunctionDefinition() == BuiltInFunctionDefinitions.FLATTEN) {
+				return executeFlatten(unresolvedCall);
 			}
 
-			return singletonList(call);
+			return singletonList(unresolvedCall);
 		}
 
-		private List<Expression> executeFlatten(CallExpression call) {
-			Expression arg = call.getChildren().get(0);
+		private List<Expression> executeFlatten(UnresolvedCallExpression unresolvedCall) {
+			Expression arg = unresolvedCall.getChildren().get(0);
 			TypeInformation<?> resultType = fromDataTypeToLegacyInfo(ExpressionTypeInfer.infer(arg));
 			if (resultType instanceof CompositeType) {
 				return flattenCompositeType(arg, (CompositeType<?>) resultType);
@@ -77,7 +77,7 @@ final class FlattenCallRule implements ResolverRule {
 
 		private List<Expression> flattenCompositeType(Expression arg, CompositeType<?> resultType) {
 			return IntStream.range(0, resultType.getArity())
-				.mapToObj(idx -> new CallExpression(GET, asList(arg, valueLiteral(resultType.getFieldNames()[idx]))))
+				.mapToObj(idx -> unresolvedCall(GET, arg, valueLiteral(resultType.getFieldNames()[idx])))
 				.collect(Collectors.toList());
 		}
 

@@ -23,6 +23,7 @@ import _root_.java.util.{List => JList}
 import org.apache.flink.api.common.typeinfo.{SqlTimeTypeInfo, TypeInformation}
 import org.apache.flink.table.api._
 import org.apache.flink.table.expressions.ApiExpressionUtils._
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions
 import org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType
 
 import _root_.scala.collection.JavaConversions._
@@ -44,14 +45,14 @@ class PlannerExpressionParserImpl extends PlannerExpressionParser {
 }
 
 /**
- * Parser for expressions inside a String. This parses exactly the same expressions that
- * would be accepted by the Scala Expression DSL.
- *
- * See [[org.apache.flink.table.api.scala.ImplicitExpressionConversions]] and
- * [[org.apache.flink.table.api.scala.ImplicitExpressionOperations]] for the constructs
- * available in the Scala Expression DSL. This parser must be kept in sync with the Scala DSL
- * lazy valined in the above files.
- */
+  * Parser for expressions inside a String. This parses exactly the same expressions that
+  * would be accepted by the Scala Expression DSL.
+  *
+  * See [[org.apache.flink.table.api.scala.ImplicitExpressionConversions]] and
+  * [[org.apache.flink.table.api.scala.ImplicitExpressionOperations]] for the constructs
+  * available in the Scala Expression DSL. This parser must be kept in sync with the Scala DSL
+  * lazy valined in the above files.
+  */
 object PlannerExpressionParserImpl extends JavaTokenParsers
   with PackratParsers
   with PlannerExpressionParser {
@@ -149,19 +150,19 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   } reduceLeft(_ | _)
 
   lazy val currentRange: PackratParser[Expression] = CURRENT_RANGE ^^ {
-    _ => call(BuiltInFunctionDefinitions.CURRENT_RANGE)
+    _ => unresolvedCall(BuiltInFunctionDefinitions.CURRENT_RANGE)
   }
 
   lazy val currentRow: PackratParser[Expression] = CURRENT_ROW ^^ {
-    _ => call(BuiltInFunctionDefinitions.CURRENT_ROW)
+    _ => unresolvedCall(BuiltInFunctionDefinitions.CURRENT_ROW)
   }
 
   lazy val unboundedRange: PackratParser[Expression] = UNBOUNDED_RANGE ^^ {
-    _ => call(BuiltInFunctionDefinitions.UNBOUNDED_RANGE)
+    _ => unresolvedCall(BuiltInFunctionDefinitions.UNBOUNDED_RANGE)
   }
 
   lazy val unboundedRow: PackratParser[Expression] = UNBOUNDED_ROW ^^ {
-    _ => call(BuiltInFunctionDefinitions.UNBOUNDED_ROW)
+    _ => unresolvedCall(BuiltInFunctionDefinitions.UNBOUNDED_ROW)
   }
 
   lazy val overConstant: PackratParser[Expression] =
@@ -174,22 +175,22 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val dataType: PackratParser[TypeInformation[_]] =
     PRIMITIVE_ARRAY ~ "(" ~> dataType <~ ")" ^^ { ct => Types.PRIMITIVE_ARRAY(ct) } |
-    OBJECT_ARRAY ~ "(" ~> dataType <~ ")" ^^ { ct => Types.OBJECT_ARRAY(ct) } |
-    MAP ~ "(" ~> dataType ~ "," ~ dataType <~ ")" ^^ { mt => Types.MAP(mt._1._1, mt._2)} |
-    BYTE ^^ { e => Types.BYTE } |
-    SHORT ^^ { e => Types.SHORT } |
-    INTERVAL_MONTHS ^^ { e => Types.INTERVAL_MONTHS } |
-    INTERVAL_MILLIS ^^ { e => Types.INTERVAL_MILLIS } |
-    INT ^^ { e => Types.INT } |
-    LONG ^^ { e => Types.LONG } |
-    FLOAT ^^ { e => Types.FLOAT } |
-    DOUBLE ^^ { e => Types.DOUBLE } |
-    BOOLEAN ^^ { { e => Types.BOOLEAN } } |
-    STRING ^^ { e => Types.STRING } |
-    SQL_DATE ^^ { e => Types.SQL_DATE } |
-    SQL_TIMESTAMP ^^ { e => Types.SQL_TIMESTAMP } |
-    SQL_TIME ^^ { e => Types.SQL_TIME } |
-    DECIMAL ^^ { e => Types.DECIMAL }
+      OBJECT_ARRAY ~ "(" ~> dataType <~ ")" ^^ { ct => Types.OBJECT_ARRAY(ct) } |
+      MAP ~ "(" ~> dataType ~ "," ~ dataType <~ ")" ^^ { mt => Types.MAP(mt._1._1, mt._2)} |
+      BYTE ^^ { e => Types.BYTE } |
+      SHORT ^^ { e => Types.SHORT } |
+      INTERVAL_MONTHS ^^ { e => Types.INTERVAL_MONTHS } |
+      INTERVAL_MILLIS ^^ { e => Types.INTERVAL_MILLIS } |
+      INT ^^ { e => Types.INT } |
+      LONG ^^ { e => Types.LONG } |
+      FLOAT ^^ { e => Types.FLOAT } |
+      DOUBLE ^^ { e => Types.DOUBLE } |
+      BOOLEAN ^^ { { e => Types.BOOLEAN } } |
+      STRING ^^ { e => Types.STRING } |
+      SQL_DATE ^^ { e => Types.SQL_DATE } |
+      SQL_TIMESTAMP ^^ { e => Types.SQL_TIMESTAMP } |
+      SQL_TIME ^^ { e => Types.SQL_TIME } |
+      DECIMAL ^^ { e => Types.DECIMAL }
 
   // literals
 
@@ -245,30 +246,33 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val over: PackratParser[Expression] = composite ~ OVER ~ fieldReference ^^ {
     case agg ~ _ ~ windowRef =>
-      call(BuiltInFunctionDefinitions.OVER, agg, windowRef)
+      unresolvedCall(BuiltInFunctionDefinitions.OVER, agg, windowRef)
   }
 
   // suffix operators
 
   lazy val suffixAsc : PackratParser[Expression] = composite <~ "." ~ ASC ~ opt("()") ^^ { e =>
-      call(BuiltInFunctionDefinitions.ORDER_ASC, e)
+    unresolvedCall(BuiltInFunctionDefinitions.ORDER_ASC, e)
   }
 
   lazy val suffixDesc : PackratParser[Expression] = composite <~ "." ~ DESC ~ opt("()") ^^ { e =>
-    call(BuiltInFunctionDefinitions.ORDER_DESC, e)
+    unresolvedCall(BuiltInFunctionDefinitions.ORDER_DESC, e)
   }
 
   lazy val suffixCast: PackratParser[Expression] =
     composite ~ "." ~ CAST ~ "(" ~ dataType ~ ")" ^^ {
       case e ~ _ ~ _ ~ _ ~ dt ~ _ =>
-        call(BuiltInFunctionDefinitions.CAST, e, typeLiteral(fromLegacyInfoToDataType(dt)))
+        unresolvedCall(
+          BuiltInFunctionDefinitions.CAST,
+          e,
+          typeLiteral(fromLegacyInfoToDataType(dt)))
     }
 
   lazy val suffixTrim: PackratParser[Expression] =
     composite ~ "." ~ TRIM ~ "(" ~ trimMode ~
-        "," ~ expression ~ ")" ^^ {
+      "," ~ expression ~ ")" ^^ {
       case operand ~ _ ~ _ ~ _ ~ mode ~ _ ~ trimCharacter ~ _ =>
-        call(
+        unresolvedCall(
           BuiltInFunctionDefinitions.TRIM,
           valueLiteral(mode == TRIM_MODE_LEADING.key || mode == TRIM_MODE_BOTH.key),
           valueLiteral(mode == TRIM_MODE_TRAILING.key || mode == TRIM_MODE_BOTH.key),
@@ -279,7 +283,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val suffixTrimWithoutArgs: PackratParser[Expression] =
     composite <~ "." ~ TRIM ~ opt("()") ^^ {
       e =>
-        call(
+        unresolvedCall(
           BuiltInFunctionDefinitions.TRIM,
           valueLiteral(true),
           valueLiteral(true),
@@ -290,39 +294,39 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val suffixIf: PackratParser[Expression] =
     composite ~ "." ~ IF ~ "(" ~ expression ~ "," ~ expression ~ ")" ^^ {
       case condition ~ _ ~ _ ~ _ ~ ifTrue ~ _ ~ ifFalse ~ _ =>
-        call(BuiltInFunctionDefinitions.IF, condition, ifTrue, ifFalse)
+        unresolvedCall(BuiltInFunctionDefinitions.IF, condition, ifTrue, ifFalse)
     }
 
   lazy val suffixExtract: PackratParser[Expression] =
     composite ~ "." ~ EXTRACT ~ "(" ~ timeIntervalUnit ~ ")" ^^ {
       case operand ~ _  ~ _ ~ _ ~ unit ~ _ =>
-        call(BuiltInFunctionDefinitions.EXTRACT, unit, operand)
+        unresolvedCall(BuiltInFunctionDefinitions.EXTRACT, unit, operand)
     }
 
   lazy val suffixFloor: PackratParser[Expression] =
     composite ~ "." ~ FLOOR ~ "(" ~ timeIntervalUnit ~ ")" ^^ {
       case operand ~ _  ~ _ ~ _ ~ unit ~ _ =>
-        call(BuiltInFunctionDefinitions.FLOOR, unit, operand)
+        unresolvedCall(BuiltInFunctionDefinitions.FLOOR, unit, operand)
     }
 
   lazy val suffixCeil: PackratParser[Expression] =
     composite ~ "." ~ CEIL ~ "(" ~ timeIntervalUnit ~ ")" ^^ {
       case operand ~ _  ~ _ ~ _ ~ unit ~ _ =>
-        call(BuiltInFunctionDefinitions.CEIL, unit, operand)
+        unresolvedCall(BuiltInFunctionDefinitions.CEIL, unit, operand)
     }
 
   // required because op.log(base) changes order of a parameters
   lazy val suffixLog: PackratParser[Expression] =
     composite ~ "." ~ LOG ~ "(" ~ expression ~ ")" ^^ {
       case operand ~ _ ~ _ ~ _ ~ base ~ _ =>
-        call(BuiltInFunctionDefinitions.LOG, base, operand)
+        unresolvedCall(BuiltInFunctionDefinitions.LOG, base, operand)
     }
 
   lazy val suffixFunctionCall: PackratParser[Expression] =
     composite ~ "." ~ functionIdent ~ "(" ~ repsep(expression, ",") ~ ")" ^^ {
-    case operand ~ _ ~ name ~ _ ~ args ~ _ =>
-      lookupCall(name, operand :: args: _*)
-  }
+      case operand ~ _ ~ name ~ _ ~ args ~ _ =>
+        lookupCall(name, operand :: args: _*)
+    }
 
   lazy val suffixFunctionCallOneArg: PackratParser[Expression] =
     composite ~ "." ~ functionIdent ^^ {
@@ -332,7 +336,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val suffixToDate: PackratParser[Expression] =
     composite <~ "." ~ TO_DATE ~ opt("()") ^^ { e =>
-      call(
+      unresolvedCall(
         BuiltInFunctionDefinitions.CAST,
         e,
         typeLiteral(fromLegacyInfoToDataType(SqlTimeTypeInfo.DATE)))
@@ -340,7 +344,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val suffixToTimestamp: PackratParser[Expression] =
     composite <~ "." ~ TO_TIMESTAMP ~ opt("()") ^^ { e =>
-      call(
+      unresolvedCall(
         BuiltInFunctionDefinitions.CAST,
         e,
         typeLiteral(fromLegacyInfoToDataType(SqlTimeTypeInfo.TIMESTAMP)))
@@ -348,7 +352,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val suffixToTime: PackratParser[Expression] =
     composite <~ "." ~ TO_TIME ~ opt("()") ^^ { e =>
-      call(
+      unresolvedCall(
         BuiltInFunctionDefinitions.CAST,
         e,
         typeLiteral(fromLegacyInfoToDataType(SqlTimeTypeInfo.TIME)))
@@ -358,24 +362,24 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
     composite ~ "." ~ (YEARS | QUARTERS | MONTHS | WEEKS | DAYS |  HOURS | MINUTES |
       SECONDS | MILLIS | YEAR | QUARTER | MONTH | WEEK | DAY | HOUR | MINUTE | SECOND | MILLI) ^^ {
 
-    case expr ~ _ ~ (YEARS.key | YEAR.key) => toMonthInterval(expr, 12)
+      case expr ~ _ ~ (YEARS.key | YEAR.key) => toMonthInterval(expr, 12)
 
-    case expr ~ _ ~ (QUARTERS.key | QUARTER.key) => toMonthInterval(expr, 3)
+      case expr ~ _ ~ (QUARTERS.key | QUARTER.key) => toMonthInterval(expr, 3)
 
-    case expr ~ _ ~ (MONTHS.key | MONTH.key) => toMonthInterval(expr, 1)
+      case expr ~ _ ~ (MONTHS.key | MONTH.key) => toMonthInterval(expr, 1)
 
-    case expr ~ _ ~ (WEEKS.key | WEEK.key) => toMilliInterval(expr, 7 * MILLIS_PER_DAY)
+      case expr ~ _ ~ (WEEKS.key | WEEK.key) => toMilliInterval(expr, 7 * MILLIS_PER_DAY)
 
-    case expr ~ _ ~ (DAYS.key | DAY.key) => toMilliInterval(expr, MILLIS_PER_DAY)
+      case expr ~ _ ~ (DAYS.key | DAY.key) => toMilliInterval(expr, MILLIS_PER_DAY)
 
-    case expr ~ _ ~ (HOURS.key | HOUR.key) => toMilliInterval(expr, MILLIS_PER_HOUR)
+      case expr ~ _ ~ (HOURS.key | HOUR.key) => toMilliInterval(expr, MILLIS_PER_HOUR)
 
-    case expr ~ _ ~ (MINUTES.key | MINUTE.key) => toMilliInterval(expr, MILLIS_PER_MINUTE)
+      case expr ~ _ ~ (MINUTES.key | MINUTE.key) => toMilliInterval(expr, MILLIS_PER_MINUTE)
 
-    case expr ~ _ ~ (SECONDS.key | SECOND.key) => toMilliInterval(expr, MILLIS_PER_SECOND)
+      case expr ~ _ ~ (SECONDS.key | SECOND.key) => toMilliInterval(expr, MILLIS_PER_SECOND)
 
-    case expr ~ _ ~ (MILLIS.key | MILLI.key)=> toMilliInterval(expr, 1)
-  }
+      case expr ~ _ ~ (MILLIS.key | MILLI.key)=> toMilliInterval(expr, 1)
+    }
 
   lazy val suffixRowInterval : PackratParser[Expression] =
     composite <~ "." ~ ROWS ^^ { e => toRowInterval(e) }
@@ -383,54 +387,56 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val suffixGet: PackratParser[Expression] =
     composite ~ "." ~ GET ~ "(" ~ literalExpr ~ ")" ^^ {
       case e ~ _ ~ _ ~ _ ~ index ~ _ =>
-        call(BuiltInFunctionDefinitions.GET, e, index)
+        unresolvedCall(BuiltInFunctionDefinitions.GET, e, index)
     }
 
   lazy val suffixFlattening: PackratParser[Expression] =
     composite <~ "." ~ FLATTEN ~ opt("()") ^^ { e =>
-      call(BuiltInFunctionDefinitions.FLATTEN, e)
+      unresolvedCall(BuiltInFunctionDefinitions.FLATTEN, e)
     }
 
   lazy val suffixDistinct: PackratParser[Expression] =
     composite <~ "." ~ DISTINCT ~ opt("()") ^^ { e =>
-      call(BuiltInFunctionDefinitions.DISTINCT, e)
+      unresolvedCall(BuiltInFunctionDefinitions.DISTINCT, e)
     }
 
   lazy val suffixAs: PackratParser[Expression] =
     composite ~ "." ~ AS ~ "(" ~ rep1sep(fieldReference, ",") ~ ")" ^^ {
       case e ~ _ ~ _ ~ _ ~ names ~ _ =>
-        call(BuiltInFunctionDefinitions.AS, e :: names.map(n => valueLiteral(n.getName)): _*)
-  }
+        unresolvedCall(
+          BuiltInFunctionDefinitions.AS,
+          e :: names.map(n => valueLiteral(n.getName)): _*)
+    }
 
   lazy val suffixed: PackratParser[Expression] =
-    // expressions that need to be resolved early
+  // expressions that need to be resolved early
     suffixFlattening |
-    // expressions that need special expression conversion
-    suffixAs | suffixTimeInterval | suffixRowInterval | suffixToTimestamp | suffixToTime |
-    suffixToDate |
-    // expression for log
-    suffixLog |
-    // expression for ordering
-    suffixAsc | suffixDesc |
-    // expressions that take enumerations
-    suffixCast | suffixTrim | suffixTrimWithoutArgs | suffixExtract | suffixFloor | suffixCeil |
-    // expressions that take literals
-    suffixGet |
-    // expression with special identifier
-    suffixIf |
-    // expression with distinct suffix modifier
-    suffixDistinct |
-    // function call must always be at the end
-    suffixFunctionCall | suffixFunctionCallOneArg |
-    // rowtime or proctime
-    timeIndicator
+      // expressions that need special expression conversion
+      suffixAs | suffixTimeInterval | suffixRowInterval | suffixToTimestamp | suffixToTime |
+      suffixToDate |
+      // expression for log
+      suffixLog |
+      // expression for ordering
+      suffixAsc | suffixDesc |
+      // expressions that take enumerations
+      suffixCast | suffixTrim | suffixTrimWithoutArgs | suffixExtract | suffixFloor | suffixCeil |
+      // expressions that take literals
+      suffixGet |
+      // expression with special identifier
+      suffixIf |
+      // expression with distinct suffix modifier
+      suffixDistinct |
+      // function call must always be at the end
+      suffixFunctionCall | suffixFunctionCallOneArg |
+      // rowtime or proctime
+      timeIndicator
 
   // prefix operators
 
   lazy val prefixCast: PackratParser[Expression] =
     CAST ~ "(" ~ expression ~ "," ~ dataType ~ ")" ^^ {
       case _ ~ _ ~ e ~ _ ~ dt ~ _ =>
-        call(
+        unresolvedCall(
           BuiltInFunctionDefinitions.CAST,
           e,
           typeLiteral(fromLegacyInfoToDataType(dt)))
@@ -439,7 +445,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val prefixIf: PackratParser[Expression] =
     IF ~ "(" ~ expression ~ "," ~ expression ~ "," ~ expression ~ ")" ^^ {
       case _ ~ _ ~ condition ~ _ ~ ifTrue ~ _ ~ ifFalse ~ _ =>
-        call(BuiltInFunctionDefinitions.IF, condition, ifTrue, ifFalse)
+        unresolvedCall(BuiltInFunctionDefinitions.IF, condition, ifTrue, ifFalse)
     }
 
   lazy val prefixFunctionCall: PackratParser[Expression] =
@@ -457,7 +463,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val prefixTrim: PackratParser[Expression] =
     TRIM ~ "(" ~ trimMode ~ "," ~ expression ~ "," ~ expression ~ ")" ^^ {
       case _ ~ _ ~ mode ~ _ ~ trimCharacter ~ _ ~ operand ~ _ =>
-        call(
+        unresolvedCall(
           BuiltInFunctionDefinitions.TRIM,
           valueLiteral(mode == TRIM_MODE_LEADING.key || mode == TRIM_MODE_BOTH.key),
           valueLiteral(mode == TRIM_MODE_TRAILING.key || mode == TRIM_MODE_BOTH.key),
@@ -468,7 +474,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val prefixTrimWithoutArgs: PackratParser[Expression] =
     TRIM ~ "(" ~ expression ~ ")" ^^ {
       case _ ~ _ ~ operand ~ _ =>
-        call(
+        unresolvedCall(
           BuiltInFunctionDefinitions.TRIM,
           valueLiteral(true),
           valueLiteral(true),
@@ -479,41 +485,41 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val prefixExtract: PackratParser[Expression] =
     EXTRACT ~ "(" ~ expression ~ "," ~ timeIntervalUnit ~ ")" ^^ {
       case _ ~ _ ~ operand ~ _ ~ unit ~ _ =>
-        call(BuiltInFunctionDefinitions.EXTRACT, unit, operand)
-      }
+        unresolvedCall(BuiltInFunctionDefinitions.EXTRACT, unit, operand)
+    }
 
   lazy val prefixTimestampDiff: PackratParser[Expression] =
     TIMESTAMP_DIFF ~ "(" ~ timePointUnit ~ "," ~ expression ~ "," ~ expression ~ ")" ^^ {
       case _ ~ _ ~ unit ~ _ ~ operand1 ~ _ ~ operand2 ~ _ =>
-        call(BuiltInFunctionDefinitions.TIMESTAMP_DIFF, unit, operand1, operand2)
+        unresolvedCall(BuiltInFunctionDefinitions.TIMESTAMP_DIFF, unit, operand1, operand2)
     }
 
   lazy val prefixFloor: PackratParser[Expression] =
     FLOOR ~ "(" ~ expression ~ "," ~ timeIntervalUnit ~ ")" ^^ {
       case _ ~ _ ~ operand ~ _ ~ unit ~ _ =>
-        call(BuiltInFunctionDefinitions.FLOOR, unit, operand)
+        unresolvedCall(BuiltInFunctionDefinitions.FLOOR, unit, operand)
     }
 
   lazy val prefixCeil: PackratParser[Expression] =
     CEIL ~ "(" ~ expression ~ "," ~ timeIntervalUnit ~ ")" ^^ {
       case _ ~ _ ~ operand ~ _ ~ unit ~ _ =>
-        call(BuiltInFunctionDefinitions.CEIL, unit, operand)
+        unresolvedCall(BuiltInFunctionDefinitions.CEIL, unit, operand)
     }
 
   lazy val prefixGet: PackratParser[Expression] =
     GET ~ "(" ~ composite ~ ","  ~ literalExpr ~ ")" ^^ {
       case _ ~ _ ~ e ~ _ ~ index ~ _ =>
-        call(BuiltInFunctionDefinitions.GET, e, index)
+        unresolvedCall(BuiltInFunctionDefinitions.GET, e, index)
     }
 
   lazy val prefixFlattening: PackratParser[Expression] =
     FLATTEN ~ "(" ~> composite <~ ")" ^^ { e =>
-      call(BuiltInFunctionDefinitions.FLATTEN, e)
+      unresolvedCall(BuiltInFunctionDefinitions.FLATTEN, e)
     }
 
   lazy val prefixToDate: PackratParser[Expression] =
     TO_DATE ~ "(" ~> expression <~ ")" ^^ { e =>
-      call(
+      unresolvedCall(
         BuiltInFunctionDefinitions.CAST,
         e,
         typeLiteral(fromLegacyInfoToDataType(SqlTimeTypeInfo.DATE)))
@@ -521,7 +527,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val prefixToTimestamp: PackratParser[Expression] =
     TO_TIMESTAMP ~ "(" ~> expression <~ ")" ^^ { e =>
-      call(
+      unresolvedCall(
         BuiltInFunctionDefinitions.CAST,
         e,
         typeLiteral(fromLegacyInfoToDataType(SqlTimeTypeInfo.TIMESTAMP)))
@@ -529,7 +535,7 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
 
   lazy val prefixToTime: PackratParser[Expression] =
     TO_TIME ~ "(" ~> expression <~ ")" ^^ { e =>
-      call(
+      unresolvedCall(
         BuiltInFunctionDefinitions.CAST,
         e,
         typeLiteral(fromLegacyInfoToDataType(SqlTimeTypeInfo.TIME)))
@@ -538,46 +544,48 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   lazy val prefixDistinct: PackratParser[Expression] =
     functionIdent ~ "." ~ DISTINCT ~ "(" ~ repsep(expression, ",") ~ ")" ^^ {
       case name ~ _ ~ _ ~ _ ~ args ~ _ =>
-        call(BuiltInFunctionDefinitions.DISTINCT, lookupCall(name, args: _*))
+        unresolvedCall(BuiltInFunctionDefinitions.DISTINCT, lookupCall(name, args: _*))
     }
 
   lazy val prefixAs: PackratParser[Expression] =
     AS ~ "(" ~ expression ~ "," ~ rep1sep(fieldReference, ",") ~ ")" ^^ {
       case _ ~ _ ~ e ~ _ ~ names ~ _ =>
-        call(BuiltInFunctionDefinitions.AS, e :: names.map(n => valueLiteral(n.getName)): _*)
+        unresolvedCall(
+          BuiltInFunctionDefinitions.AS,
+          e :: names.map(n => valueLiteral(n.getName)): _*)
     }
 
   lazy val prefixed: PackratParser[Expression] =
-    // expressions that need to be resolved early
+  // expressions that need to be resolved early
     prefixFlattening |
-    // expressions that need special expression conversion
-    prefixAs| prefixToTimestamp | prefixToTime | prefixToDate |
-    // expressions that take enumerations
-    prefixCast | prefixTrim | prefixTrimWithoutArgs | prefixExtract | prefixFloor | prefixCeil |
+      // expressions that need special expression conversion
+      prefixAs| prefixToTimestamp | prefixToTime | prefixToDate |
+      // expressions that take enumerations
+      prefixCast | prefixTrim | prefixTrimWithoutArgs | prefixExtract | prefixFloor | prefixCeil |
       prefixTimestampDiff |
-    // expressions that take literals
-    prefixGet |
-    // expression with special identifier
-    prefixIf |
-    // expression with prefix distinct
-    prefixDistinct |
-    // function call must always be at the end
-    prefixFunctionCall | prefixFunctionCallOneArg
+      // expressions that take literals
+      prefixGet |
+      // expression with special identifier
+      prefixIf |
+      // expression with prefix distinct
+      prefixDistinct |
+      // function call must always be at the end
+      prefixFunctionCall | prefixFunctionCallOneArg
 
   // suffix/prefix composite
 
   lazy val composite: PackratParser[Expression] =
     over | suffixed | nullLiteral | prefixed | atom |
-    failure("Composite expression expected.")
+      failure("Composite expression expected.")
 
   // unary ops
 
   lazy val unaryNot: PackratParser[Expression] = "!" ~> composite ^^ { e =>
-    call(BuiltInFunctionDefinitions.NOT, e)
+    unresolvedCall(BuiltInFunctionDefinitions.NOT, e)
   }
 
   lazy val unaryMinus: PackratParser[Expression] = "-" ~> composite ^^ { e =>
-    call(BuiltInFunctionDefinitions.MINUS_PREFIX, e)
+    unresolvedCall(BuiltInFunctionDefinitions.MINUS_PREFIX, e)
   }
 
   lazy val unaryPlus: PackratParser[Expression] = "+" ~> composite ^^ { e => e }
@@ -588,90 +596,100 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   // arithmetic
 
   lazy val product: PackratParser[Expression] = unary * (
-    "*" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.TIMES, a, b) } |
-    "/" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.DIVIDE, a, b) } |
-    "%" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.MOD, a, b) } ) |
-    failure("Product expected.")
+    "*" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.TIMES, a, b)
+    } | "/" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.DIVIDE, a, b)
+    } | "%" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.MOD, a, b)
+    }) | failure("Product expected.")
 
   lazy val term: PackratParser[Expression] = product * (
-    "+" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.PLUS, a, b) } |
-    "-" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.MINUS, a, b) } ) |
-    failure("Term expected.")
+    "+" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.PLUS, a, b)
+    } | "-" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.MINUS, a, b)
+    }) | failure("Term expected.")
 
   // comparison
 
   lazy val equalTo: PackratParser[Expression] = term ~ ("===" | "==" | "=") ~ term ^^ {
-    case l ~ _ ~ r => call(BuiltInFunctionDefinitions.EQUALS, l, r)
+    case l ~ _ ~ r => unresolvedCall(BuiltInFunctionDefinitions.EQUALS, l, r)
   }
 
   lazy val notEqualTo: PackratParser[Expression] = term ~ ("!==" | "!=" | "<>") ~ term ^^ {
-    case l ~ _ ~ r => call(BuiltInFunctionDefinitions.NOT_EQUALS, l, r)
+    case l ~ _ ~ r => unresolvedCall(BuiltInFunctionDefinitions.NOT_EQUALS, l, r)
   }
 
   lazy val greaterThan: PackratParser[Expression] = term ~ ">" ~ term ^^ {
-    case l ~ _ ~ r => call(BuiltInFunctionDefinitions.GREATER_THAN, l, r)
+    case l ~ _ ~ r => unresolvedCall(BuiltInFunctionDefinitions.GREATER_THAN, l, r)
   }
 
   lazy val greaterThanOrEqual: PackratParser[Expression] = term ~ ">=" ~ term ^^ {
-    case l ~ _ ~ r => call(BuiltInFunctionDefinitions.GREATER_THAN_OR_EQUAL, l, r)
+    case l ~ _ ~ r => unresolvedCall(BuiltInFunctionDefinitions.GREATER_THAN_OR_EQUAL, l, r)
   }
 
   lazy val lessThan: PackratParser[Expression] = term ~ "<" ~ term ^^ {
-    case l ~ _ ~ r => call(BuiltInFunctionDefinitions.LESS_THAN, l, r)
+    case l ~ _ ~ r => unresolvedCall(BuiltInFunctionDefinitions.LESS_THAN, l, r)
   }
 
   lazy val lessThanOrEqual: PackratParser[Expression] = term ~ "<=" ~ term ^^ {
-    case l ~ _ ~ r => call(BuiltInFunctionDefinitions.LESS_THAN_OR_EQUAL, l, r)
+    case l ~ _ ~ r => unresolvedCall(BuiltInFunctionDefinitions.LESS_THAN_OR_EQUAL, l, r)
   }
 
   lazy val comparison: PackratParser[Expression] =
     equalTo | notEqualTo |
-    greaterThan | greaterThanOrEqual |
-    lessThan | lessThanOrEqual | term |
-    failure("Comparison expected.")
+      greaterThan | greaterThanOrEqual |
+      lessThan | lessThanOrEqual | term |
+      failure("Comparison expected.")
 
   // logic
 
   lazy val logic: PackratParser[Expression] = comparison * (
-    "&&" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.AND, a, b) } |
-    "||" ^^^ { (a:Expression, b:Expression) => call(BuiltInFunctionDefinitions.OR, a, b) } ) |
-    failure("Logic expected.")
+    "&&" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.AND, a, b)
+    } | "||" ^^^ {
+      (a:Expression, b:Expression) => unresolvedCall(BuiltInFunctionDefinitions.OR, a, b)
+    }) | failure("Logic expected.")
 
   // time indicators
 
   lazy val timeIndicator: PackratParser[Expression] = proctime | rowtime
 
   lazy val proctime: PackratParser[Expression] = fieldReference ~ "." ~ PROCTIME ^^ {
-    case f ~ _ ~ _ => call(BuiltInFunctionDefinitions.PROCTIME, f)
+    case f ~ _ ~ _ => unresolvedCall(BuiltInFunctionDefinitions.PROCTIME, f)
   }
 
   lazy val rowtime: PackratParser[Expression] = fieldReference ~ "." ~ ROWTIME ^^ {
-    case f ~ _ ~ _ => call(BuiltInFunctionDefinitions.ROWTIME, f)
+    case f ~ _ ~ _ => unresolvedCall(BuiltInFunctionDefinitions.ROWTIME, f)
   }
 
   // alias
 
   lazy val alias: PackratParser[Expression] = logic ~ AS ~ fieldReference ^^ {
-      case e ~ _ ~ name =>
-        call(BuiltInFunctionDefinitions.AS, e, valueLiteral(name.getName))
+    case e ~ _ ~ name =>
+      unresolvedCall(BuiltInFunctionDefinitions.AS, e, valueLiteral(name.getName))
   } | logic ~ AS ~ "(" ~ rep1sep(fieldReference, ",") ~ ")" ^^ {
     case e ~ _ ~ _ ~ names ~ _ =>
-      call(BuiltInFunctionDefinitions.AS, e :: names.map(n => valueLiteral(n.getName)): _*)
+      unresolvedCall(
+        BuiltInFunctionDefinitions.AS,
+        e :: names.map(n => valueLiteral(n.getName)): _*)
   } | logic
 
   lazy val aliasMapping: PackratParser[Expression] =
     fieldReference ~ AS ~ fieldReference ^^ {
-      case e ~ _ ~ name => call(BuiltInFunctionDefinitions.AS, e, valueLiteral(name.getName))
-  }
+      case e ~ _ ~ name =>
+        unresolvedCall(BuiltInFunctionDefinitions.AS, e, valueLiteral(name.getName))
+    }
 
   // columns
 
   lazy val fieldNameRange: PackratParser[Expression] = fieldReference ~ TO ~ fieldReference ^^ {
-    case start ~ _ ~ end => call(BuiltInFunctionDefinitions.RANGE_TO, start, end)
+    case start ~ _ ~ end => unresolvedCall(BuiltInFunctionDefinitions.RANGE_TO, start, end)
   }
 
   lazy val fieldIndexRange: PackratParser[Expression] = numberLiteral ~ TO ~ numberLiteral ^^ {
-    case start ~ _ ~ end => call(BuiltInFunctionDefinitions.RANGE_TO, start, end)
+    case start ~ _ ~ end => unresolvedCall(BuiltInFunctionDefinitions.RANGE_TO, start, end)
   }
 
   lazy val range = fieldNameRange | fieldIndexRange
@@ -702,13 +720,8 @@ object PlannerExpressionParserImpl extends JavaTokenParsers
   private def throwError(msg: String, next: Input): Nothing = {
     val improvedMsg = msg.replace("string matching regex `\\z'", "End of expression")
 
-    throw ExpressionParserException(
+    throw new RuntimeException(
       s"""Could not parse expression at column ${next.pos.column}: $improvedMsg
-        |${next.pos.longString}""".stripMargin)
+         |${next.pos.longString}""".stripMargin)
   }
 }
-
-/**
-  * Exception for all errors occurring during expression parsing.
-  */
-case class ExpressionParserException(msg: String) extends RuntimeException(msg)

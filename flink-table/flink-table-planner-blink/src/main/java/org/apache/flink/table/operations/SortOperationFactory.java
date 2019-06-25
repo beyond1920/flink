@@ -20,16 +20,14 @@ package org.apache.flink.table.operations;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.ValidationException;
-import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
 import org.apache.flink.table.expressions.CallExpression;
-import org.apache.flink.table.expressions.Expression;
+import org.apache.flink.table.expressions.ExpressionResolver;
+import org.apache.flink.table.expressions.ResolvedExpression;
+import org.apache.flink.table.expressions.ResolvedExpressionDefaultVisitor;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 
 import java.util.List;
 import java.util.stream.Collectors;
-
-import static java.util.Collections.singletonList;
-import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.ORDERING;
-import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.ORDER_ASC;
 
 /**
  * Utility class for creating a valid {@link SortQueryOperation} operation.
@@ -38,7 +36,6 @@ import static org.apache.flink.table.expressions.BuiltInFunctionDefinitions.ORDE
 public class SortOperationFactory {
 
 	private final boolean isStreaming;
-	private final OrderWrapper orderWrapper = new OrderWrapper();
 
 	public SortOperationFactory(boolean isStreaming) {
 		this.isStreaming = isStreaming;
@@ -54,12 +51,17 @@ public class SortOperationFactory {
 	 * @param child relational expression on top of which to apply the sort operation
 	 * @return valid sort operation
 	 */
-	public QueryOperation createSort(List<Expression> orders, QueryOperation child) {
+	public QueryOperation createSort(
+			List<ResolvedExpression> orders,
+			QueryOperation child,
+			ExpressionResolver.PostResolverFactory postResolverFactory) {
 		failIfStreaming();
 
-		List<Expression> convertedOrders = orders.stream()
-			.map(f -> f.accept(orderWrapper))
-			.collect(Collectors.toList());
+		final OrderWrapper orderWrapper = new OrderWrapper(postResolverFactory);
+
+		List<ResolvedExpression> convertedOrders = orders.stream()
+				.map(f -> f.accept(orderWrapper))
+				.collect(Collectors.toList());
 		return new SortQueryOperation(convertedOrders, child);
 	}
 
@@ -125,11 +127,17 @@ public class SortOperationFactory {
 		}
 	}
 
-	private class OrderWrapper extends ApiExpressionDefaultVisitor<Expression> {
+	private class OrderWrapper extends ResolvedExpressionDefaultVisitor<ResolvedExpression> {
+
+		private ExpressionResolver.PostResolverFactory postResolverFactory;
+
+		OrderWrapper(ExpressionResolver.PostResolverFactory postResolverFactory) {
+			this.postResolverFactory = postResolverFactory;
+		}
 
 		@Override
-		public Expression visitCall(CallExpression call) {
-			if (ORDERING.contains(call.getFunctionDefinition())) {
+		public ResolvedExpression visit(CallExpression call) {
+			if (BuiltInFunctionDefinitions.ORDERING.contains(call.getFunctionDefinition())) {
 				return call;
 			} else {
 				return defaultMethod(call);
@@ -137,8 +145,8 @@ public class SortOperationFactory {
 		}
 
 		@Override
-		protected Expression defaultMethod(Expression expression) {
-			return new CallExpression(ORDER_ASC, singletonList(expression));
+		protected ResolvedExpression defaultMethod(ResolvedExpression expression) {
+			return postResolverFactory.wrappingCall(BuiltInFunctionDefinitions.ORDER_ASC, expression);
 		}
 	}
 }

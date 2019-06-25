@@ -22,23 +22,24 @@ import org.apache.flink.api.common.typeinfo.BasicArrayTypeInfo;
 import org.apache.flink.api.common.typeutils.CompositeType;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ValidationException;
-import org.apache.flink.table.expressions.AggregateFunctionDefinition;
-import org.apache.flink.table.expressions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionVisitor;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
-import org.apache.flink.table.expressions.FunctionDefinition;
-import org.apache.flink.table.expressions.InternalFunctionDefinitions;
 import org.apache.flink.table.expressions.LocalReferenceExpression;
 import org.apache.flink.table.expressions.ResolvedAggInputReference;
 import org.apache.flink.table.expressions.ResolvedAggLocalReference;
 import org.apache.flink.table.expressions.ResolvedDistinctKeyReference;
-import org.apache.flink.table.expressions.ScalarFunctionDefinition;
-import org.apache.flink.table.expressions.TableFunctionDefinition;
 import org.apache.flink.table.expressions.TypeLiteralExpression;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
 import org.apache.flink.table.expressions.ValueLiteralExpression;
+import org.apache.flink.table.functions.AggregateFunctionDefinition;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.functions.FunctionDefinition;
+import org.apache.flink.table.functions.InternalFunctionDefinitions;
 import org.apache.flink.table.functions.ScalarFunction;
+import org.apache.flink.table.functions.ScalarFunctionDefinition;
+import org.apache.flink.table.functions.TableFunctionDefinition;
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils;
 import org.apache.flink.table.types.AtomicDataType;
 import org.apache.flink.table.types.CollectionDataType;
@@ -308,6 +309,8 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 		});
 		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.PROCTIME,
 				call -> new AtomicDataType(new TimestampType(true, TimestampKind.PROCTIME, 3)));
+		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.CURRENT_ROW, BIGINT_INFER);
+		CALL_TYPE_INFERENCES.put(BuiltInFunctionDefinitions.UNBOUNDED_ROW, BIGINT_INFER);
 	}
 
 	private ExpressionTypeInfer() {}
@@ -316,8 +319,7 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 		return expression.accept(INSTANCE);
 	}
 
-	@Override
-	public DataType visitCall(CallExpression call) {
+	private DataType visit(UnresolvedCallExpression call) {
 		FunctionDefinition def = call.getFunctionDefinition();
 		FunctionDefinition definition = call.getFunctionDefinition();
 		if (definition instanceof ScalarFunctionDefinition) {
@@ -343,17 +345,22 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 	}
 
 	@Override
-	public DataType visitValueLiteral(ValueLiteralExpression valueLiteral) {
+	public DataType visit(CallExpression call) {
+		return call.getOutputDataType();
+	}
+
+	@Override
+	public DataType visit(ValueLiteralExpression valueLiteral) {
 		return valueLiteral.getOutputDataType();
 	}
 
 	@Override
-	public DataType visitFieldReference(FieldReferenceExpression fieldReference) {
+	public DataType visit(FieldReferenceExpression fieldReference) {
 		return fieldReference.getOutputDataType();
 	}
 
 	@Override
-	public DataType visitTypeLiteral(TypeLiteralExpression typeLiteral) {
+	public DataType visit(TypeLiteralExpression typeLiteral) {
 		return typeLiteral.getOutputDataType();
 	}
 
@@ -367,6 +374,8 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 			return fromLogicalToDataType(((ResolvedDistinctKeyReference) other).getResultType());
 		} else if (other instanceof LocalReferenceExpression) {
 			return ((LocalReferenceExpression) other).getOutputDataType();
+		} else if (other instanceof UnresolvedCallExpression) {
+			return visit((UnresolvedCallExpression) other);
 		} else {
 			throw new UnsupportedOperationException(other.getClass().getSimpleName() + ":" + other.toString());
 		}
@@ -376,6 +385,6 @@ public class ExpressionTypeInfer implements ExpressionVisitor<DataType> {
 	 * Type infer for {@link CallExpression}.
 	 */
 	private interface CallTypeInference {
-		DataType infer(CallExpression call);
+		DataType infer(UnresolvedCallExpression call);
 	}
 }
