@@ -19,15 +19,16 @@
 package org.apache.flink.table.validate
 
 import java.util
-
 import org.apache.calcite.sql._
 import org.apache.flink.table.api.ValidationException
 import org.apache.flink.table.calcite.FlinkTypeFactory
-import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils
-.{createAggregateSqlFunction, createScalarSqlFunction, createTableSqlFunction}
-import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
+import org.apache.flink.table.catalog.{FunctionLookup, ObjectIdentifier}
+import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{createAggregateSqlFunction, createScalarSqlFunction, createTableSqlFunction}
+import org.apache.flink.table.functions.{AggregateFunction, AggregateFunctionDefinition, BuiltInFunctionDefinitions, FunctionDefinition, InternalFunctionDefinitions, ScalarFunction, ScalarFunctionDefinition, TableFunction, TableFunctionDefinition}
 import org.apache.flink.table.types.DataType
 import org.apache.flink.table.types.TypeInfoDataTypeConverter.fromDataTypeToTypeInfo
+
+import java.util.Optional
 
 import _root_.scala.collection.JavaConversions._
 import _root_.scala.collection.mutable
@@ -37,7 +38,7 @@ import _root_.scala.collection.mutable
   * of both Table API and SQL API.
   * TODO Table API.
   */
-class FunctionCatalog extends FunctionDefinitionCatalog {
+class FunctionCatalog extends FunctionLookup {
 
   private val tableApiFunctions = mutable.HashMap.empty[String, FunctionDefinition]
 
@@ -107,10 +108,12 @@ class FunctionCatalog extends FunctionDefinitionCatalog {
   /**
     * Lookup a function by name and operands and return the [[FunctionDefinition]].
     */
-  override def lookupFunction(name: String): FunctionDefinition = {
-    tableApiFunctions.getOrElse(
+  override def lookupFunction(name: String): Optional[FunctionLookup.Result] = {
+    val definition = tableApiFunctions.getOrElse(
       normalizeName(name),
       throw new ValidationException(s"Undefined function: $name"))
+    Optional.of(new FunctionLookup.Result(ObjectIdentifier.of("",
+      "", name), definition))
   }
 
   private def normalizeName(name: String): String = {

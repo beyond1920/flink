@@ -21,6 +21,28 @@ package org.apache.flink.table.plan;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.calcite.FlinkRelBuilder;
+import org.apache.flink.table.calcite.FlinkTypeFactory;
+import org.apache.flink.table.catalog.FunctionLookup;
+import org.apache.flink.table.expressions.AggregateVisitors;
+import org.apache.flink.table.expressions.CallExpression;
+import org.apache.flink.table.expressions.Expression;
+import org.apache.flink.table.expressions.ExpressionDefaultVisitor;
+import org.apache.flink.table.expressions.FieldReferenceExpression;
+import org.apache.flink.table.expressions.LookupCallResolver;
+import org.apache.flink.table.expressions.ProctimeAttribute;
+import org.apache.flink.table.expressions.ResolvedExpression;
+import org.apache.flink.table.expressions.RexNodeConverter;
+import org.apache.flink.table.expressions.RexPlannerExpression;
+import org.apache.flink.table.expressions.RowtimeAttribute;
+import org.apache.flink.table.expressions.UnresolvedCallExpression;
+import org.apache.flink.table.expressions.ValueLiteralExpression;
+import org.apache.flink.table.expressions.WindowEnd;
+import org.apache.flink.table.expressions.WindowReference;
+import org.apache.flink.table.expressions.WindowStart;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.functions.FunctionDefinition;
+import org.apache.flink.table.functions.TableFunction;
+import org.apache.flink.table.functions.utils.TableSqlFunction;
 import org.apache.flink.table.operations.AggregateQueryOperation;
 import org.apache.flink.table.operations.CalculatedQueryOperation;
 import org.apache.flink.table.operations.CatalogQueryOperation;
@@ -28,6 +50,7 @@ import org.apache.flink.table.operations.DataStreamQueryOperation;
 import org.apache.flink.table.operations.DistinctQueryOperation;
 import org.apache.flink.table.operations.FilterQueryOperation;
 import org.apache.flink.table.operations.JoinQueryOperation;
+import org.apache.flink.table.operations.JoinQueryOperation.JoinType;
 import org.apache.flink.table.operations.PlannerQueryOperation;
 import org.apache.flink.table.operations.ProjectQueryOperation;
 import org.apache.flink.table.operations.QueryOperation;
@@ -38,19 +61,47 @@ import org.apache.flink.table.operations.SetQueryOperation;
 import org.apache.flink.table.operations.SortQueryOperation;
 import org.apache.flink.table.operations.TableSourceQueryOperation;
 import org.apache.flink.table.operations.WindowAggregateQueryOperation;
+import org.apache.flink.table.operations.WindowAggregateQueryOperation.ResolvedGroupWindow;
+import org.apache.flink.table.plan.logical.LogicalWindow;
+import org.apache.flink.table.plan.logical.SessionGroupWindow;
+import org.apache.flink.table.plan.logical.SlidingGroupWindow;
+import org.apache.flink.table.plan.logical.TumblingGroupWindow;
 import org.apache.flink.table.plan.schema.DataStreamTable;
 import org.apache.flink.table.plan.schema.FlinkRelOptTable;
 import org.apache.flink.table.plan.schema.TableSourceTable;
+import org.apache.flink.table.plan.schema.TypedFlinkTableFunction;
 import org.apache.flink.table.plan.stats.FlinkStatistic;
 import org.apache.flink.table.sources.LookupableTableSource;
 import org.apache.flink.table.sources.StreamTableSource;
 import org.apache.flink.table.sources.TableSource;
+import org.apache.flink.table.types.DataType;
+import org.apache.flink.util.Preconditions;
 
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.CorrelationId;
+import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.logical.LogicalTableFunctionScan;
 import org.apache.calcite.rel.logical.LogicalTableScan;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.tools.RelBuilder.AggCall;
+import org.apache.calcite.tools.RelBuilder.GroupKey;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+
+import scala.Some;
+
+import static java.util.Arrays.asList;
+import static java.util.stream.Collectors.toList;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.isFunctionOfKind;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.unresolvedCall;
+import static org.apache.flink.table.expressions.ExpressionUtils.extractValue;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AS;
+import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
+import static org.apache.flink.table.functions.FunctionKind.TABLE_AGGREGATE;
+import static org.apache.flink.table.types.utils.TypeConversions.fromDataToLogicalType;
+import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
 /**
  * Converter from Flink's specific relational representation: {@link QueryOperation} to Calcite's specific relational
@@ -66,7 +117,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 	private final AggregateVisitor aggregateVisitor = new AggregateVisitor();
 	private final JoinExpressionVisitor joinExpressionVisitor = new JoinExpressionVisitor();
 
-	public QueryOperationConverter(FlinkRelBuilder relBuilder, FunctionDefinitionCatalog functionCatalog) {
+	public QueryOperationConverter(FlinkRelBuilder relBuilder, FunctionLookup functionCatalog) {
 		this.relBuilder = relBuilder;
 		this.callResolver = new LookupCallResolver(functionCatalog);
 		this.rexNodeConverter = new RexNodeConverter(relBuilder);
@@ -96,7 +147,8 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 
 			List<RexNode> groupings = convertToRexNodes(aggregate.getGroupingExpressions());
 			GroupKey groupKey = relBuilder.groupKey(groupings);
-			return relBuilder.aggregate(groupKey, aggregations).build();		}
+			return relBuilder.aggregate(groupKey, aggregations).build();
+		}
 
 		@Override
 		public RelNode visit(WindowAggregateQueryOperation windowAggregate) {
@@ -148,7 +200,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 		 * Get the {@link AggCall} correspond to the aggregate expression.
 		 */
 		private AggCall getAggCall(Expression aggregateExpression) {
-			if (AggregateOperationFactory.isTableAggFunctionCall(aggregateExpression)) {
+			if (isFunctionOfKind(aggregateExpression, TABLE_AGGREGATE)) {
 				throw new UnsupportedOperationException("TableAggFunction is not supported yet!");
 			} else {
 				return aggregateExpression.accept(aggregateVisitor);
@@ -229,7 +281,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 					Collections.emptyList(),
 					relBuilder.call(sqlFunction, parameters),
 					function.getElementType(null),
-					function.getRowType(typeFactory, null),
+					function.getRowType(typeFactory, null, null),
 					null);
 		}
 
@@ -264,7 +316,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 			FlinkStatistic statistic;
 			List<String> names;
 			if (tableSourceOperation instanceof RichTableSourceQueryOperation &&
-				((RichTableSourceQueryOperation<U>) tableSourceOperation).getQualifiedName() != null) {
+					((RichTableSourceQueryOperation<U>) tableSourceOperation).getQualifiedName() != null) {
 				statistic = ((RichTableSourceQueryOperation<U>) tableSourceOperation).getStatistic();
 				names = ((RichTableSourceQueryOperation<U>) tableSourceOperation).getQualifiedName();
 			} else {
@@ -277,10 +329,10 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 
 			TableSourceTable<?> tableSourceTable = new TableSourceTable<>(tableSource, !isBatch, statistic);
 			FlinkRelOptTable table = FlinkRelOptTable.create(
-				relBuilder.getRelOptSchema(),
-				tableSourceTable.getRowType(relBuilder.getTypeFactory()),
-				names,
-				tableSourceTable);
+					relBuilder.getRelOptSchema(),
+					tableSourceTable.getRowType(relBuilder.getTypeFactory()),
+					names,
+					tableSourceTable);
 			return LogicalTableScan.create(relBuilder.getCluster(), table);
 		}
 
@@ -309,109 +361,107 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
 					dataStreamTable);
 			return LogicalTableScan.create(relBuilder.getCluster(), table);
 		}
-	}
 
-
-	private List<RexNode> convertToRexNodes(List<Expression> expressions) {
-		return expressions
-				.stream()
-				.map(QueryOperationConverter.this::convertExprToRexNode)
-				.collect(toList());
-	}
-
-	private LogicalWindow toLogicalWindow(ResolvedGroupWindow window) {
-		DataType windowType = window.getTimeAttribute().getOutputDataType();
-		WindowReference windowReference = new WindowReference(window.getAlias(),
-				new Some<>(fromDataToLogicalType(windowType)));
-		switch (window.getType()) {
-			case SLIDE:
-				return new SlidingGroupWindow(
-						windowReference,
-						window.getTimeAttribute(),
-						window.getSize().orElseThrow(() -> new TableException("missed size parameters!")),
-						window.getSlide().orElseThrow(() -> new TableException("missed slide parameters!"))
-				);
-			case SESSION:
-				return new SessionGroupWindow(
-						windowReference,
-						window.getTimeAttribute(),
-						window.getGap().orElseThrow(() -> new TableException("missed gap parameters!"))
-				);
-			case TUMBLE:
-				return new TumblingGroupWindow(
-						windowReference,
-						window.getTimeAttribute(),
-						window.getSize().orElseThrow(() -> new TableException("missed size parameters!"))
-				);
-			default:
-				throw new TableException("Unknown window type");
+		private List<RexNode> convertToRexNodes(List<ResolvedExpression> expressions) {
+			return expressions
+					.stream()
+					.map(QueryOperationConverter.this::convertExprToRexNode)
+					.collect(toList());
 		}
-	}
 
-	private JoinRelType convertJoinType(JoinType joinType) {
-		switch (joinType) {
-			case INNER:
-				return JoinRelType.INNER;
-			case LEFT_OUTER:
-				return JoinRelType.LEFT;
-			case RIGHT_OUTER:
-				return JoinRelType.RIGHT;
-			case FULL_OUTER:
-				return JoinRelType.FULL;
-			default:
-				throw new TableException("Unknown join type: " + joinType);
-		}
-	}
-}
-
-private class JoinExpressionVisitor extends ExpressionDefaultVisitor<RexNode> {
-
-	private static final int numberOfJoinInputs = 2;
-
-	@Override
-	public RexNode visitCall(CallExpression call) {
-		List<Expression> newChildren = call.getChildren().stream().map(expr -> {
-			RexNode convertedNode = expr.accept(this);
-			return (Expression) new RexPlannerExpression(convertedNode);
-		}).collect(toList());
-
-		CallExpression newCall = new CallExpression(call.getFunctionDefinition(), newChildren);
-		return convertExprToRexNode(newCall);
-	}
-
-	@Override
-	public RexNode visitFieldReference(FieldReferenceExpression fieldReference) {
-		return relBuilder.field(numberOfJoinInputs, fieldReference.getInputIndex(), fieldReference.getFieldIndex());
-	}
-
-	@Override
-	protected RexNode defaultMethod(Expression expression) {
-		return convertExprToRexNode(expression);
-	}
-}
-
-private class AggregateVisitor extends ExpressionDefaultVisitor<AggCall> {
-
-	@Override
-	public AggCall visitCall(CallExpression call) {
-		if (call.getFunctionDefinition() == AS) {
-			String aggregateName = extractValue(call.getChildren().get(1), String.class)
-					.orElseThrow(() -> new TableException("Unexpected name."));
-
-			Expression aggregate = call.getChildren().get(0);
-			if (isFunctionOfType(aggregate, AGGREGATE_FUNCTION)) {
-				return aggregate.accept(callResolver).accept(
-						new AggregateVisitors.AggCallVisitor(relBuilder, rexNodeConverter, aggregateName, false));
+		private LogicalWindow toLogicalWindow(ResolvedGroupWindow window) {
+			DataType windowType = window.getTimeAttribute().getOutputDataType();
+			WindowReference windowReference = new WindowReference(window.getAlias(),
+					new Some<>(fromDataToLogicalType(windowType)));
+			switch (window.getType()) {
+				case SLIDE:
+					return new SlidingGroupWindow(
+							windowReference,
+							window.getTimeAttribute(),
+							window.getSize().orElseThrow(() -> new TableException("missed size parameters!")),
+							window.getSlide().orElseThrow(() -> new TableException("missed slide parameters!"))
+					);
+				case SESSION:
+					return new SessionGroupWindow(
+							windowReference,
+							window.getTimeAttribute(),
+							window.getGap().orElseThrow(() -> new TableException("missed gap parameters!"))
+					);
+				case TUMBLE:
+					return new TumblingGroupWindow(
+							windowReference,
+							window.getTimeAttribute(),
+							window.getSize().orElseThrow(() -> new TableException("missed size parameters!"))
+					);
+				default:
+					throw new TableException("Unknown window type");
 			}
 		}
-		throw new TableException("Expected named aggregate. Got: " + call);
+
+		private JoinRelType convertJoinType(JoinType joinType) {
+			switch (joinType) {
+				case INNER:
+					return JoinRelType.INNER;
+				case LEFT_OUTER:
+					return JoinRelType.LEFT;
+				case RIGHT_OUTER:
+					return JoinRelType.RIGHT;
+				case FULL_OUTER:
+					return JoinRelType.FULL;
+				default:
+					throw new TableException("Unknown join type: " + joinType);
+			}
+		}
 	}
 
-	@Override
-	protected AggCall defaultMethod(Expression expression) {
-		throw new TableException("Unexpected expression: " + expression);
+	private class JoinExpressionVisitor extends ExpressionDefaultVisitor<RexNode> {
+
+		private static final int numberOfJoinInputs = 2;
+
+		@Override
+		public RexNode visit(CallExpression unresolvedCall) {
+			final Expression[] newChildren = unresolvedCall.getChildren().stream().map(expr -> {
+				RexNode convertedNode = expr.accept(this);
+				return (Expression) new RexPlannerExpression(convertedNode);
+			}).toArray(Expression[]::new);
+
+			UnresolvedCallExpression newCall = unresolvedCall(unresolvedCall.getFunctionDefinition(), newChildren);
+			return convertExprToRexNode(newCall);
+		}
+
+		@Override
+		public RexNode visit(FieldReferenceExpression fieldReference) {
+			return relBuilder.field(numberOfJoinInputs, fieldReference.getInputIndex(), fieldReference.getFieldIndex());
+		}
+
+		@Override
+		protected RexNode defaultMethod(Expression expression) {
+			return convertExprToRexNode(expression);
+		}
 	}
-}
+
+	private class AggregateVisitor extends ExpressionDefaultVisitor<AggCall> {
+
+		@Override
+		public AggCall visit(CallExpression unresolvedCall) {
+			if (unresolvedCall.getFunctionDefinition() == AS) {
+				String aggregateName = extractValue(unresolvedCall.getChildren().get(1), String.class)
+						.orElseThrow(() -> new TableException("Unexpected name."));
+
+				Expression aggregate = unresolvedCall.getChildren().get(0);
+				if (isFunctionOfKind(aggregate, AGGREGATE)) {
+					return aggregate.accept(callResolver).accept(
+							new AggregateVisitors.AggCallVisitor(relBuilder, rexNodeConverter, aggregateName, false));
+				}
+			}
+			throw new TableException("Expected named aggregate. Got: " + unresolvedCall);
+		}
+
+		@Override
+		protected AggCall defaultMethod(Expression expression) {
+			throw new TableException("Unexpected expression: " + expression);
+		}
+	}
 
 	private RexNode convertExprToRexNode(Expression expr) {
 		return expr.accept(callResolver).accept(rexNodeConverter);

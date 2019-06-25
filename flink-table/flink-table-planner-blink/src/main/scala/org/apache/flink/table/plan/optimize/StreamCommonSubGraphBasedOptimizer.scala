@@ -27,6 +27,7 @@ import org.apache.flink.table.plan.optimize.program.{FlinkStreamProgram, StreamO
 import org.apache.flink.table.plan.schema.IntermediateRelTable
 import org.apache.flink.table.plan.stats.FlinkStatistic
 import org.apache.flink.table.sinks.{DataStreamTableSink, RetractStreamTableSink}
+import org.apache.flink.table.validate.FunctionCatalog
 import org.apache.flink.util.Preconditions
 
 import org.apache.calcite.rel.RelNode
@@ -147,6 +148,8 @@ class StreamCommonSubGraphBasedOptimizer(tEnv: StreamTableEnvironment)
       override def needFinalTimeIndicatorConversion: Boolean = true
 
       override def updateAsRetraction: Boolean = updatesAsRetraction
+
+      override def getFunctionCatalog: FunctionCatalog = tEnv.functionCatalog
     })
   }
 

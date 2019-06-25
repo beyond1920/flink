@@ -30,6 +30,7 @@ import org.apache.flink.table.plan.stats.{ColumnStats, FlinkStatistic, TableStat
 import org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
 import org.apache.flink.table.types.logical.{BigIntType, IntType, LogicalType, TimestampKind, TimestampType, VarCharType}
 import org.apache.flink.table.typeutils.BaseRowTypeInfo
+import org.apache.flink.table.validate.FunctionCatalog
 
 import org.apache.calcite.config.{CalciteConnectionConfigImpl, CalciteConnectionProperty, Lex}
 import org.apache.calcite.jdbc.CalciteSchema
@@ -60,7 +61,7 @@ object MetadataTestUtil {
       .costFactory(new FlinkCostFactory)
       .typeSystem(new FlinkTypeSystem)
       .operatorTable(new SqlStdOperatorTable)
-      .context(new FlinkContextImpl(config))
+      .context(new FlinkContextImpl(config, new FunctionCatalog))
       .traitDefs(Array(
         ConventionTraitDef.INSTANCE,
         FlinkRelDistributionTraitDef.INSTANCE,

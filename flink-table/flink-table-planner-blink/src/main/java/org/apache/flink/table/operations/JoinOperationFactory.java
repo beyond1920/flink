@@ -21,11 +21,12 @@ package org.apache.flink.table.operations;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.expressions.ApiExpressionDefaultVisitor;
-import org.apache.flink.table.expressions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
 import org.apache.flink.table.expressions.ExpressionUtils;
 import org.apache.flink.table.expressions.FieldReferenceExpression;
+import org.apache.flink.table.expressions.ResolvedExpression;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.operations.JoinQueryOperation.JoinType;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
 
@@ -64,7 +65,7 @@ public class JoinOperationFactory {
 			QueryOperation left,
 			QueryOperation right,
 			JoinType joinType,
-			Expression condition,
+			ResolvedExpression condition,
 			boolean correlated) {
 		verifyConditionType(condition);
 		validateNamesAmbiguity(left, right);
@@ -110,7 +111,7 @@ public class JoinOperationFactory {
 	private class EquiJoinExistsChecker extends ApiExpressionDefaultVisitor<Boolean> {
 
 		@Override
-		public Boolean visitCall(CallExpression call) {
+		public Boolean visit(CallExpression call) {
 			if (call.getFunctionDefinition() == BuiltInFunctionDefinitions.EQUALS) {
 				return isJoinCondition(call.getChildren().get(0), call.getChildren().get(1));
 			} else if (call.getFunctionDefinition() == BuiltInFunctionDefinitions.OR) {

@@ -22,13 +22,16 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.api.GroupWindow;
 import org.apache.flink.table.api.OverWindow;
 import org.apache.flink.table.api.TableException;
-import org.apache.flink.table.expressions.catalog.FunctionDefinitionCatalog;
+import org.apache.flink.table.catalog.FunctionLookup;
 import org.apache.flink.table.expressions.lookups.FieldReferenceLookup;
 import org.apache.flink.table.expressions.lookups.TableReferenceLookup;
 import org.apache.flink.table.expressions.rules.ResolverRule;
 import org.apache.flink.table.expressions.rules.ResolverRules;
+import org.apache.flink.table.functions.BuiltInFunctionDefinition;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.plan.logical.LogicalOverWindow;
+import org.apache.flink.table.types.DataType;
 import org.apache.flink.util.Preconditions;
 
 import java.util.ArrayList;
@@ -40,16 +43,20 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static org.apache.flink.table.expressions.ApiExpressionUtils.typeLiteral;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.valueLiteral;
+
 /**
  * Tries to resolve all unresolved expressions such as {@link UnresolvedReferenceExpression}
  * or calls such as {@link BuiltInFunctionDefinitions#OVER}.
  *
- * <p>The default set of rules ({@link ExpressionResolver#getResolverRules()}) will resolve following references:
+ * <p>The default set of rules ({@link ExpressionResolver#getAllResolverRules()}) will resolve
+ * following references:
  * <ul>
  *     <li>flatten '*' and column functions to all fields of underlying inputs</li>
  *     <li>join over aggregates with corresponding over windows into a single resolved call</li>
  *     <li>resolve remaining unresolved references to fields, tables or local references</li>
- *     <li>replace call to {@link BuiltInFunctionDefinitions#FLATTEN}</li>
+ *     <li>replace calls to {@link BuiltInFunctionDefinitions#FLATTEN}, {@link BuiltInFunctionDefinitions#WITH_COLUMNS}, etc.</li>
  *     <li>performs call arguments types validation and inserts additional casts if possible</li>
  * </ul>
  */
@@ -57,42 +64,53 @@ import java.util.stream.Collectors;
 public class ExpressionResolver {
 
 	/**
+	 * List of rules for (possibly) expanding the list of unresolved expressions.
+	 */
+	public static List<ResolverRule> getExpandingResolverRules() {
+		return Arrays.asList(
+				ResolverRules.LOOKUP_CALL_BY_NAME,
+				ResolverRules.FLATTEN_STAR_REFERENCE,
+				ResolverRules.EXPAND_COLUMN_FUNCTIONS);
+	}
+
+	/**
 	 * List of rules that will be applied during expression resolution.
 	 */
-	public static List<ResolverRule> getResolverRules() {
+	public static List<ResolverRule> getAllResolverRules() {
 		return Arrays.asList(
-			ResolverRules.LOOKUP_CALL_BY_NAME,
-			ResolverRules.FLATTEN_STAR_REFERENCE,
-			ResolverRules.EXPAND_COLUMN_FUNCTIONS,
-			ResolverRules.OVER_WINDOWS,
-			ResolverRules.FIELD_RESOLVE,
-			ResolverRules.FLATTEN_CALL,
-			ResolverRules.VERIFY_NO_MORE_UNRESOLVED_EXPRESSIONS);
+				ResolverRules.LOOKUP_CALL_BY_NAME,
+				ResolverRules.FLATTEN_STAR_REFERENCE,
+				ResolverRules.EXPAND_COLUMN_FUNCTIONS,
+				ResolverRules.OVER_WINDOWS,
+				ResolverRules.FIELD_RESOLVE,
+				ResolverRules.FLATTEN_CALL,
+				ResolverRules.QUALIFY_BUILT_IN_FUNCTIONS,
+				ResolverRules.RESOLVE_CALL_BY_ARGUMENTS);
 	}
+
+	private static final VerifyResolutionVisitor VERIFY_RESOLUTION_VISITOR = new VerifyResolutionVisitor();
 
 	private final FieldReferenceLookup fieldLookup;
 
 	private final TableReferenceLookup tableLookup;
 
-	private final FunctionDefinitionCatalog functionLookup;
+	private final FunctionLookup functionLookup;
+
+	private final PostResolverFactory postResolverFactory = new PostResolverFactory();
 
 	private final Map<String, LocalReferenceExpression> localReferences;
 
 	private final Map<Expression, LogicalOverWindow> overWindows;
 
-	private final Function<List<Expression>, List<Expression>> resolveFunction;
-
 	private ExpressionResolver(
 			TableReferenceLookup tableLookup,
-			FunctionDefinitionCatalog functionCatalog,
+			FunctionLookup functionCatalog,
 			FieldReferenceLookup fieldLookup,
 			List<OverWindow> overWindows,
-			List<LocalReferenceExpression> localReferences,
-			List<ResolverRule> rules) {
+			List<LocalReferenceExpression> localReferences) {
 		this.tableLookup = Preconditions.checkNotNull(tableLookup);
 		this.fieldLookup = Preconditions.checkNotNull(fieldLookup);
 		this.functionLookup = Preconditions.checkNotNull(functionCatalog);
-		this.resolveFunction = concatenateRules(rules);
 
 		this.localReferences = localReferences.stream().collect(Collectors.toMap(
 			LocalReferenceExpression::getName,
@@ -112,7 +130,7 @@ public class ExpressionResolver {
 	 */
 	public static ExpressionResolverBuilder resolverFor(
 			TableReferenceLookup tableCatalog,
-			FunctionDefinitionCatalog functionDefinitionCatalog,
+			FunctionLookup functionDefinitionCatalog,
 			QueryOperation... inputs) {
 		return new ExpressionResolverBuilder(inputs, tableCatalog, functionDefinitionCatalog);
 	}
@@ -127,8 +145,36 @@ public class ExpressionResolver {
 	 * @param expressions list of expressions to resolve.
 	 * @return resolved list of expression
 	 */
-	public List<Expression> resolve(List<Expression> expressions) {
+	public List<ResolvedExpression> resolve(List<Expression> expressions) {
+		final Function<List<Expression>, List<Expression>> resolveFunction =
+				concatenateRules(getAllResolverRules());
+		final List<Expression> resolvedExpressions = resolveFunction.apply(expressions);
+		return resolvedExpressions.stream()
+				.map(e -> e.accept(VERIFY_RESOLUTION_VISITOR))
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * Resolves given expressions with configured set of rules. All expressions of an operation should be
+	 * given at once as some rules might assume the order of expressions.
+	 *
+	 * <p>After this method is applied the returned expressions might contain unresolved expression that
+	 * can be used for further API transformations.
+	 *
+	 * @param expressions list of expressions to resolve.
+	 * @return resolved list of expression
+	 */
+	public List<Expression> resolveExpanding(List<Expression> expressions) {
+		final Function<List<Expression>, List<Expression>> resolveFunction =
+				concatenateRules(getExpandingResolverRules());
 		return resolveFunction.apply(expressions);
+	}
+
+	/**
+	 * Enables the creation of resolved expressions for transformations after the actual resolution.
+	 */
+	public PostResolverFactory postResolverFactory() {
+		return postResolverFactory;
 	}
 
 	private Function<List<Expression>, List<Expression>> concatenateRules(List<ResolverRule> rules) {
@@ -152,15 +198,15 @@ public class ExpressionResolver {
 
 	private List<Expression> prepareExpressions(List<Expression> expressions) {
 		return expressions.stream()
-			.flatMap(e -> lookupCall(e).stream())
-			.flatMap(e -> resolveColumnFunctions(e).stream())
-			.map(this::resolveFieldsInSingleExpression)
-			.collect(Collectors.toList());
+				.flatMap(e -> resolveExpanding(Collections.singletonList(e)).stream())
+				.map(this::resolveFieldsInSingleExpression)
+				.collect(Collectors.toList());
 	}
 
 	private Expression resolveFieldsInSingleExpression(Expression expression) {
-		List<Expression> expressions = ResolverRules.FIELD_RESOLVE.apply(Collections.singletonList(expression),
-			new ExpressionResolverContext());
+		List<Expression> expressions = ResolverRules.FIELD_RESOLVE.apply(
+				Collections.singletonList(expression),
+				new ExpressionResolverContext());
 
 		if (expressions.size() != 1) {
 			throw new TableException("Expected a single expression as a result. Got: " + expressions);
@@ -169,26 +215,23 @@ public class ExpressionResolver {
 		return expressions.get(0);
 	}
 
-	private List<Expression> resolveColumnFunctions(Expression expression) {
-		List<Expression> expressions = ResolverRules.EXPAND_COLUMN_FUNCTIONS.apply(Collections.singletonList(expression),
-			new ExpressionResolverContext());
-		return expressions;
-	}
+	private static class VerifyResolutionVisitor extends ApiExpressionDefaultVisitor<ResolvedExpression> {
 
-	private List<Expression> lookupCall(Expression expression) {
-		List<Expression> expressions = ResolverRules.LOOKUP_CALL_BY_NAME.apply(Collections.singletonList(expression),
-			new ExpressionResolverContext());
-		return expressions;
-	}
+		@Override
+		public ResolvedExpression visit(CallExpression call) {
+			call.getChildren().forEach(c -> c.accept(this));
+			return call;
+		}
 
-	private LogicalOverWindow resolveOverWindow(OverWindow overWindow) {
-		return new LogicalOverWindow(
-				overWindow.getAlias(),
-				prepareExpressions(overWindow.getPartitioning()),
-				resolveFieldsInSingleExpression(overWindow.getOrder()),
-				resolveFieldsInSingleExpression(overWindow.getPreceding()),
-				overWindow.getFollowing().map(this::resolveFieldsInSingleExpression)
-		);
+		@Override
+		protected ResolvedExpression defaultMethod(Expression expression) {
+			if (expression instanceof ResolvedExpression) {
+				return (ResolvedExpression) expression;
+			}
+			throw new TableException(
+					"All expressions should have been resolved at this stage. Unexpected expression: " +
+							expression);
+		}
 	}
 
 	private class ExpressionResolverContext implements ResolverRule.ResolutionContext {
@@ -204,8 +247,13 @@ public class ExpressionResolver {
 		}
 
 		@Override
-		public FunctionDefinitionCatalog functionDefinitionLookup() {
+		public FunctionLookup functionLookup() {
 			return functionLookup;
+		}
+
+		@Override
+		public PostResolverFactory postResolutionFactory() {
+			return postResolverFactory;
 		}
 
 		@Override
@@ -219,6 +267,59 @@ public class ExpressionResolver {
 		}
 	}
 
+	private LogicalOverWindow resolveOverWindow(OverWindow overWindow) {
+		return new LogicalOverWindow(
+				overWindow.getAlias(),
+				prepareExpressions(overWindow.getPartitioning()),
+				resolveFieldsInSingleExpression(overWindow.getOrder()),
+				resolveFieldsInSingleExpression(overWindow.getPreceding()),
+				overWindow.getFollowing().map(this::resolveFieldsInSingleExpression)
+		);
+	}
+
+	/**
+	 * Factory for creating resolved expressions after the actual resolution has happened. This is
+	 * required when a resolved expression stack needs to be modified in later transformations.
+	 *
+	 * <p>Note: Further resolution or validation will not happen anymore, therefore the created
+	 * expressions must be valid.
+	 */
+	public class PostResolverFactory {
+
+		public CallExpression as(ResolvedExpression expression, String alias) {
+			final FunctionLookup.Result lookupOfAs = functionLookup
+					.lookupBuiltInFunction(BuiltInFunctionDefinitions.AS);
+
+			return new CallExpression(
+					lookupOfAs.getObjectIdentifier(),
+					lookupOfAs.getFunctionDefinition(),
+					Arrays.asList(expression, valueLiteral(alias)),
+					expression.getOutputDataType());
+		}
+
+		public CallExpression cast(ResolvedExpression expression, DataType dataType) {
+			final FunctionLookup.Result lookupOfCast = functionLookup
+					.lookupBuiltInFunction(BuiltInFunctionDefinitions.CAST);
+
+			return new CallExpression(
+					lookupOfCast.getObjectIdentifier(),
+					lookupOfCast.getFunctionDefinition(),
+					Arrays.asList(expression, typeLiteral(dataType)),
+					dataType);
+		}
+
+		public CallExpression wrappingCall(BuiltInFunctionDefinition definition, ResolvedExpression expression) {
+			final FunctionLookup.Result lookupOfDefinition = functionLookup
+					.lookupBuiltInFunction(definition);
+
+			return new CallExpression(
+					lookupOfDefinition.getObjectIdentifier(),
+					lookupOfDefinition.getFunctionDefinition(),
+					Collections.singletonList(expression),
+					expression.getOutputDataType()); // the output type is equal to the input type
+		}
+	}
+
 	/**
 	 * Builder for creating {@link ExpressionResolver}.
 	 */
@@ -226,18 +327,17 @@ public class ExpressionResolver {
 
 		private final List<QueryOperation> queryOperations;
 		private final TableReferenceLookup tableCatalog;
-		private final FunctionDefinitionCatalog functionCatalog;
+		private final FunctionLookup functionLookup;
 		private List<OverWindow> logicalOverWindows = new ArrayList<>();
 		private List<LocalReferenceExpression> localReferences = new ArrayList<>();
-		private List<ResolverRule> rules = new ArrayList<>(getResolverRules());
 
 		private ExpressionResolverBuilder(
 				QueryOperation[] queryOperations,
 				TableReferenceLookup tableCatalog,
-				FunctionDefinitionCatalog functionCatalog) {
+				FunctionLookup functionLookup) {
 			this.queryOperations = Arrays.asList(queryOperations);
 			this.tableCatalog = tableCatalog;
-			this.functionCatalog = functionCatalog;
+			this.functionLookup = functionLookup;
 		}
 
 		public ExpressionResolverBuilder withOverWindows(List<OverWindow> windows) {
@@ -252,12 +352,11 @@ public class ExpressionResolver {
 
 		public ExpressionResolver build() {
 			return new ExpressionResolver(
-				tableCatalog,
-				functionCatalog,
-				new FieldReferenceLookup(queryOperations),
-				logicalOverWindows,
-				localReferences,
-				rules);
+					tableCatalog,
+					functionLookup,
+					new FieldReferenceLookup(queryOperations),
+					logicalOverWindows,
+					localReferences);
 		}
 	}
 }

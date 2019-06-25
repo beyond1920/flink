@@ -55,7 +55,11 @@ object BatchTableEnvUtil {
   }
 
   def parseFieldNames(fields: String): Array[String] = {
-    fields.replace(" ", "").split(",")
+    if (fields != null) {
+      fields.replace(" ", "").split(",")
+    } else {
+      null
+    }
   }
 
   /**

@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
 import static org.apache.flink.table.functions.FunctionKind.SCALAR;
 
 /**
@@ -33,40 +34,84 @@ import static org.apache.flink.table.functions.FunctionKind.SCALAR;
 public class InternalFunctionDefinitions {
 
 	public static final BuiltInFunctionDefinition THROW_EXCEPTION =
-		new BuiltInFunctionDefinition.Builder()
-			.name("throwException")
-			.kind(SCALAR)
-			.build();
+			new BuiltInFunctionDefinition.Builder()
+					.name("throwException")
+					.kind(SCALAR)
+					.build();
 
-	public static final FunctionDefinition DENSE_RANK = new FunctionDefinition("DENSE_RANK", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition DENSE_RANK =
+			new BuiltInFunctionDefinition.Builder()
+					.name("DENSE_RANK")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition FIRST_VALUE = new FunctionDefinition("FIRST_VALUE", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition FIRST_VALUE =
+			new BuiltInFunctionDefinition.Builder()
+					.name("FIRST_VALUE")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition STDDEV = new FunctionDefinition("STDDEV", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition LAST_VALUE =
+			new BuiltInFunctionDefinition.Builder()
+					.name("LAST_VALUE")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition LEAD = new FunctionDefinition("LEAD", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition STDDEV =
+			new BuiltInFunctionDefinition.Builder()
+					.name("STDDEV")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition LAG = new FunctionDefinition("LAG", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition LEAD =
+			new BuiltInFunctionDefinition.Builder()
+					.name("LEAD")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition LAST_VALUE = new FunctionDefinition("LAST_VALUE", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition LAG =
+			new BuiltInFunctionDefinition.Builder()
+					.name("LAG")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition RANK = new FunctionDefinition("RANK", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition RANK =
+			new BuiltInFunctionDefinition.Builder()
+					.name("RANK")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition ROW_NUMBER = new FunctionDefinition("ROW_NUMBER", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition ROW_NUMBER =
+			new BuiltInFunctionDefinition.Builder()
+					.name("ROW_NUMBER")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition SINGLE_VALUE = new FunctionDefinition("SINGLE_VALUE", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition SINGLE_VALUE =
+			new BuiltInFunctionDefinition.Builder()
+					.name("SINGLE_VALUE")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition CONCAT_AGG = new FunctionDefinition("CONCAT_AGG", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition CONCAT_AGG =
+			new BuiltInFunctionDefinition.Builder()
+					.name("CONCAT_AGG")
+					.kind(AGGREGATE)
+					.build();
 
-	public static final FunctionDefinition VARIANCE = new FunctionDefinition("VARIANCE", AGGREGATE_FUNCTION);
+	public static final BuiltInFunctionDefinition VARIANCE =
+			new BuiltInFunctionDefinition.Builder()
+					.name("VARIANCE")
+					.kind(AGGREGATE)
+					.build();
 
-	public static List<FunctionDefinition> getDefinitions() {
+	public static List<BuiltInFunctionDefinition> getDefinitions() {
 		final Field[] fields = InternalFunctionDefinitions.class.getFields();
-		final List<FunctionDefinition> list = new ArrayList<>(fields.length);
+		final List<BuiltInFunctionDefinition> list = new ArrayList<>(fields.length);
 		for (Field field : fields) {
 			if (FunctionDefinition.class.isAssignableFrom(field.getType())) {
 				try {
-					final FunctionDefinition funcDef = (FunctionDefinition) field.get(InternalFunctionDefinitions.class);
+					final BuiltInFunctionDefinition funcDef = (BuiltInFunctionDefinition) field.get(BuiltInFunctionDefinitions.class);
 					list.add(Preconditions.checkNotNull(funcDef));
 				} catch (IllegalAccessException e) {
 					throw new TableException(

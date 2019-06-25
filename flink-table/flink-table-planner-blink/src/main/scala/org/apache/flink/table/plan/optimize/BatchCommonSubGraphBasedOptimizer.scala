@@ -22,6 +22,7 @@ import org.apache.flink.table.api.{BatchTableEnvironment, TableConfig}
 import org.apache.flink.table.plan.nodes.physical.batch.BatchExecSink
 import org.apache.flink.table.plan.optimize.program.{BatchOptimizeContext, FlinkBatchProgram}
 import org.apache.flink.table.plan.schema.IntermediateRelTable
+import org.apache.flink.table.validate.FunctionCatalog
 import org.apache.flink.util.Preconditions
 
 import org.apache.calcite.rel.RelNode
@@ -76,6 +77,8 @@ class BatchCommonSubGraphBasedOptimizer(tEnv: BatchTableEnvironment)
 
     programs.optimize(relNode, new BatchOptimizeContext {
       override def getTableConfig: TableConfig = config
+
+      override def getFunctionCatalog: FunctionCatalog = tEnv.functionCatalog
     })
   }
 

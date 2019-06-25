@@ -21,6 +21,10 @@ package org.apache.flink.table.expressions;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.calcite.FlinkTypeFactory;
 import org.apache.flink.table.functions.AggregateFunction;
+import org.apache.flink.table.functions.AggregateFunctionDefinition;
+import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
+import org.apache.flink.table.functions.FunctionDefinition;
+import org.apache.flink.table.functions.InternalFunctionDefinitions;
 import org.apache.flink.table.functions.UserDefinedAggregateFunction;
 import org.apache.flink.table.functions.sql.FlinkSqlOperatorTable;
 import org.apache.flink.table.functions.utils.AggSqlFunction;
@@ -38,8 +42,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.table.calcite.FlinkTypeFactory.toLogicalType;
-import static org.apache.flink.table.expressions.ExpressionUtils.isFunctionOfType;
-import static org.apache.flink.table.expressions.FunctionDefinition.Type.AGGREGATE_FUNCTION;
+import static org.apache.flink.table.expressions.ApiExpressionUtils.isFunctionOfKind;
+import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
 import static org.apache.flink.table.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
@@ -83,8 +87,8 @@ public class AggregateVisitors {
 		}
 
 		@Override
-		public SqlAggFunction visitCall(CallExpression call) {
-			Preconditions.checkArgument(isFunctionOfType(call, AGGREGATE_FUNCTION));
+		public SqlAggFunction visit(CallExpression call) {
+			Preconditions.checkArgument(isFunctionOfKind(call, AGGREGATE));
 			FunctionDefinition def = call.getFunctionDefinition();
 			if (AGG_DEF_SQL_OPERATOR_MAPPING.containsKey(def)) {
 				return AGG_DEF_SQL_OPERATOR_MAPPING.get(def);
@@ -93,22 +97,21 @@ public class AggregateVisitors {
 				Expression innerAgg = call.getChildren().get(0);
 				return innerAgg.accept(this);
 			}
-			if (def instanceof AggregateFunctionDefinition) {
-				AggregateFunctionDefinition aggDef = (AggregateFunctionDefinition) def;
-				UserDefinedAggregateFunction userDefinedAggregateFunc = aggDef.getAggregateFunction();
-				if (userDefinedAggregateFunc instanceof AggregateFunction) {
-					AggregateFunction aggFunc = (AggregateFunction) userDefinedAggregateFunc;
-					return new AggSqlFunction(
-							aggFunc.functionIdentifier(),
-							aggFunc.toString(),
-							aggFunc,
-							fromLegacyInfoToDataType(aggDef.getResultTypeInfo()),
-							fromLegacyInfoToDataType(aggDef.getAccumulatorTypeInfo()),
-							typeFactory,
-							aggFunc.requiresOver());
-				}
+			AggregateFunctionDefinition aggDef = (AggregateFunctionDefinition) def;
+			UserDefinedAggregateFunction userDefinedAggregateFunc = aggDef.getAggregateFunction();
+			if (userDefinedAggregateFunc instanceof AggregateFunction) {
+				AggregateFunction aggFunc = (AggregateFunction) userDefinedAggregateFunc;
+				return new AggSqlFunction(
+						aggFunc.functionIdentifier(),
+						aggFunc.toString(),
+						aggFunc,
+						fromLegacyInfoToDataType(aggDef.getResultTypeInfo()),
+						fromLegacyInfoToDataType(aggDef.getAccumulatorTypeInfo()),
+						typeFactory,
+						aggFunc.requiresOver());
+			} else {
+				throw new UnsupportedOperationException("TableAggregateFunction is not supported yet!");
 			}
-			throw new TableException("Unexpected AggregateFunction " + def.getName());
 		}
 
 		@Override
@@ -128,8 +131,8 @@ public class AggregateVisitors {
 		}
 
 		@Override
-		public RelDataType visitCall(CallExpression call) {
-			Preconditions.checkArgument(isFunctionOfType(call, AGGREGATE_FUNCTION));
+		public RelDataType visit(CallExpression call) {
+			Preconditions.checkArgument(isFunctionOfKind(call, AGGREGATE));
 			FunctionDefinition def = call.getFunctionDefinition();
 			if (def instanceof AggregateFunctionDefinition) {
 				AggregateFunctionDefinition aggDef = (AggregateFunctionDefinition) def;
@@ -177,7 +180,7 @@ public class AggregateVisitors {
 				MultisetType multisetType = new MultisetType(toLogicalType(inputRexNode.getType()));
 				return typeFactory.createFieldTypeFromLogicalType(multisetType);
 			} else {
-				throw new TableException("Unexpected AggregateFunction " + def.getName());
+				throw new TableException("Unexpected AggregateFunction " + def);
 			}
 		}
 
@@ -208,8 +211,8 @@ public class AggregateVisitors {
 		}
 
 		@Override
-		public RelBuilder.AggCall visitCall(CallExpression call) {
-			Preconditions.checkArgument(isFunctionOfType(call, AGGREGATE_FUNCTION));
+		public RelBuilder.AggCall visit(CallExpression call) {
+			Preconditions.checkArgument(isFunctionOfKind(call, AGGREGATE));
 			FunctionDefinition def = call.getFunctionDefinition();
 
 			if (def instanceof AggregateFunctionDefinition) {
@@ -235,7 +238,7 @@ public class AggregateVisitors {
 									.collect(Collectors.toList())
 					);
 				} else {
-					throw new UnsupportedOperationException(def.getName());
+					throw new UnsupportedOperationException("TableAggregateFunction is not supported yet!");
 				}
 			}
 			if (BuiltInFunctionDefinitions.DISTINCT.equals(def)) {

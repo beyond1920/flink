@@ -22,6 +22,7 @@ import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.calcite.{FlinkContextImpl, FlinkTypeFactory, FlinkTypeSystem}
 import org.apache.flink.table.plan.schema._
 import org.apache.flink.table.plan.stats.{ColumnStats, FlinkStatistic, TableStats}
+import org.apache.flink.table.validate.FunctionCatalog
 import org.apache.flink.table.{JDouble, JLong}
 import org.apache.flink.util.Preconditions
 
@@ -81,7 +82,7 @@ class AggCallSelectivityEstimatorTest {
     val tableScan = mock(classOf[TableScan])
     val cluster = mock(classOf[RelOptCluster])
     val planner = mock(classOf[AbstractRelOptPlanner])
-    val context = new FlinkContextImpl(tableConfig)
+    val context = new FlinkContextImpl(tableConfig, new FunctionCatalog)
     when(tableScan, "getCluster").thenReturn(cluster)
     when(cluster, "getRexBuilder").thenReturn(rexBuilder)
     when(cluster, "getTypeFactory").thenReturn(typeFactory)

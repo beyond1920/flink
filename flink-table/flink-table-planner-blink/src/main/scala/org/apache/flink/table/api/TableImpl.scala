@@ -19,12 +19,12 @@
 package org.apache.flink.table.api
 
 import _root_.java.util.Collections.emptyList
-
 import org.apache.flink.table.expressions.{Expression, ExpressionParser, LookupCallResolver}
-import org.apache.flink.table.functions.TemporalTableFunction
+import org.apache.flink.table.functions.{TemporalTableFunction, TemporalTableFunctionImpl}
+import org.apache.flink.table.operations.JoinQueryOperation.JoinType
 import org.apache.flink.table.operations.OperationExpressionsUtils._
 import org.apache.flink.table.operations.{OperationTreeBuilder, QueryOperation}
-import org.apache.flink.table.plan.QueryOperationConverter
+import org.apache.flink.table.util.JavaScalaConversionUtil.toJava
 
 import org.apache.calcite.rel.RelNode
 
@@ -42,7 +42,7 @@ import _root_.scala.collection.JavaConverters._
   * @param tableEnv The [[TableEnvironment]] to which the table is bound.
   * @param operationTree logical representation
   */
-class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) extends Table {
+class TableImpl(val tableEnv: TableEnvironment, val operationTree: QueryOperation) extends Table {
 
   private[flink] val operationTreeBuilder: OperationTreeBuilder = tableEnv.operationTreeBuilder
 
@@ -201,7 +201,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
       right.getQueryOperation,
       joinType,
       toJava(joinPredicate),
-      correlated = false))
+      false))
   }
 
   override def joinLateral(tableFunctionCall: String): Table = {
@@ -266,7 +266,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
       throw new ValidationException("Only tables from the same TableEnvironment can be " +
           "subtracted.")
     }
-    wrap(operationTreeBuilder.minus(operationTree, rightImpl.operationTree, all = false))
+    wrap(operationTreeBuilder.minus(operationTree, rightImpl.operationTree,false))
   }
 
   override def minusAll(right: Table): Table = {
@@ -277,7 +277,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
           "subtracted.")
     }
 
-    wrap(operationTreeBuilder.minus(operationTree, rightImpl.operationTree, all = true))
+    wrap(operationTreeBuilder.minus(operationTree, rightImpl.operationTree,true))
   }
 
   override def union(right: Table): Table = {
@@ -287,7 +287,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
       throw new ValidationException("Only tables from the same TableEnvironment can be unioned.")
     }
 
-    wrap(operationTreeBuilder.union(operationTree, rightImpl.operationTree, all = false))
+    wrap(operationTreeBuilder.union(operationTree, rightImpl.operationTree,false))
   }
 
   override def unionAll(right: Table): Table = {
@@ -297,7 +297,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
       throw new ValidationException("Only tables from the same TableEnvironment can be unioned.")
     }
 
-    wrap(operationTreeBuilder.union(operationTree, rightImpl.operationTree, all = true))
+    wrap(operationTreeBuilder.union(operationTree, rightImpl.operationTree,true))
   }
 
   override def intersect(right: Table): Table = {
@@ -308,7 +308,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
         "Only tables from the same TableEnvironment can be intersected.")
     }
 
-    wrap(operationTreeBuilder.intersect(operationTree, rightImpl.operationTree, all = false))
+    wrap(operationTreeBuilder.intersect(operationTree, rightImpl.operationTree,false))
   }
 
   override def intersectAll(right: Table): Table = {
@@ -319,7 +319,7 @@ class TableImpl(val tableEnv: TableEnvironment, operationTree: QueryOperation) e
         "Only tables from the same TableEnvironment can be intersected.")
     }
 
-    wrap(operationTreeBuilder.intersect(operationTree, rightImpl.operationTree, all = true))
+    wrap(operationTreeBuilder.intersect(operationTree, rightImpl.operationTree,true))
   }
 
   override def orderBy(fields: String): Table = {
@@ -593,7 +593,7 @@ class WindowGroupedTableImpl(
           tableImpl.operationTree
         ),
         // required for proper resolution of the time attribute in multi-windows
-        explicitAlias = true
+        true
       ))
   }
 

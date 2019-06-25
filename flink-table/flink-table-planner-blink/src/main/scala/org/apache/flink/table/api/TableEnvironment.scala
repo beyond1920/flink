@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.api
 
+import _root_.java.util.Optional
 import org.apache.flink.annotation.VisibleForTesting
 import org.apache.flink.api.common.JobExecutionResult
 import org.apache.flink.api.common.typeinfo.TypeInformation
@@ -27,14 +28,17 @@ import org.apache.flink.streaming.api.environment.{StreamExecutionEnvironment =>
 import org.apache.flink.streaming.api.graph.StreamGraph
 import org.apache.flink.streaming.api.scala.{StreamExecutionEnvironment => ScalaStreamExecEnv}
 import org.apache.flink.streaming.api.transformations.StreamTransformation
+import org.apache.flink.table.api.internal.TableImpl
 import org.apache.flink.table.api.java.{BatchTableEnvironment => JavaBatchTableEnvironment, StreamTableEnvironment => JavaStreamTableEnv}
 import org.apache.flink.table.api.scala.{BatchTableEnvironment => ScalaBatchTableEnvironment, StreamTableEnvironment => ScalaStreamTableEnv}
 import org.apache.flink.table.calcite._
 import org.apache.flink.table.catalog.{CatalogBaseTable, CatalogManager, CatalogManagerCalciteSchema, ConnectorCatalogTable, GenericInMemoryCatalog, ObjectPath, QueryOperationCatalogView}
 import org.apache.flink.table.dataformat.BaseRow
+import org.apache.flink.table.expressions.TableReferenceExpression
+import org.apache.flink.table.expressions.lookups.TableReferenceLookup
 import org.apache.flink.table.functions.utils.UserDefinedFunctionUtils.{checkForInstantiation, checkNotSingleton, extractResultTypeFromTableFunction, getAccumulatorTypeOfAggregateFunction, getResultTypeOfAggregateFunction}
 import org.apache.flink.table.functions.{AggregateFunction, ScalarFunction, TableFunction}
-import org.apache.flink.table.operations.{CatalogQueryOperation, PlannerQueryOperation}
+import org.apache.flink.table.operations.{CatalogQueryOperation, OperationTreeBuilderImpl, PlannerQueryOperation, QueryOperation}
 import org.apache.flink.table.plan.nodes.calcite.{LogicalSink, Sink}
 import org.apache.flink.table.plan.nodes.exec.ExecNode
 import org.apache.flink.table.plan.nodes.physical.FlinkPhysicalRel
@@ -84,7 +88,7 @@ abstract class TableEnvironment(
   protected val defaultCatalogName: String = config.getBuiltInCatalogName
   protected val defaultDatabaseName: String = config.getBuiltInDatabaseName
 
-  private[flink] val functionCatalog = new FunctionCatalog
+  private[flink] val functionCatalog = new FunctionCatalog()
 
   private val plannerContext: PlannerContext =
     new PlannerContext(
@@ -101,7 +105,19 @@ abstract class TableEnvironment(
     plannerContext.createRelBuilder(currentCatalogName, currentDatabase)
   }
 
-  private[flink] val operationTreeBuilder = new OperationTreeBuilder(this)
+  private def tableLookup: TableReferenceLookup = {
+    new TableReferenceLookup {
+      override def lookupTable(name: String): Optional[TableReferenceExpression] = {
+        JavaScalaConversionUtil
+          .toJava(scanInternal(Array(name)).map(t => new TableReferenceExpression(name, t)))
+      }
+    }
+  }
+
+  private[flink] val operationTreeBuilder = new OperationTreeBuilderImpl(
+    tableLookup,
+    functionCatalog,
+    !isBatch)
 
   /** Returns the Calcite [[FrameworkConfig]] of this TableEnvironment. */
   @VisibleForTesting
@@ -1039,4 +1055,5 @@ object TableEnvironment {
       catalogManager: CatalogManager): ScalaStreamTableEnv = {
     new ScalaStreamTableEnv(executionEnvironment, tableConfig, catalogManager)
   }
+
 }
