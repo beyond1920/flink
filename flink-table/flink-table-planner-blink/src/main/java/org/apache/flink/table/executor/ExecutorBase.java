@@ -32,7 +32,7 @@ import java.util.List;
  */
 @Internal
 public abstract class ExecutorBase implements Executor {
-	private final String DEFAULT_JOB_NAME = "Flink Exec Table Job";
+	private final static String DEFAULT_JOB_NAME = "Flink Exec Table Job";
 	private final StreamExecutionEnvironment executionEnvironment;
 	protected List<Transformation<?>> transformations = new ArrayList<>();
 
